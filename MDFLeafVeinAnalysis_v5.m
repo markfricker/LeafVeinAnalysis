@@ -1,4 +1,4 @@
-% %function results = MDFLeafVeinAnalysisv2(FolderName,micron_per_pixel,DownSample,ShowFigs,ExportFigs)
+% %function results = MDFLeafVeinAnalysis_v5(FolderName,micron_per_pixel,DownSample,ShowFigs,ExportFigs,FullMetrics)
 % %% set up directories
 % dir_out_images = ['..' filesep 'summary' filesep 'images' filesep];
 % dir_out_width = ['..' filesep 'summary' filesep 'width' filesep];
@@ -148,7 +148,7 @@
 % disp(['Step ' num2str(step) ': polygon analysis'])
 % % find the polygon and areole areas
 % [G_veins, sk_polygon, bw_polygons, bw_areoles, total_area_mask, polygon_LM] = fnc_polygon_find(G_veins,bw_cnn,sk,skLoop,bw_mask);
-% [areole_stats,polygon_stats] = fnc_polygon_analysis(bw_polygons,bw_areoles, polygon_LM);
+%  [areole_stats,polygon_stats] = fnc_polygon_analysis(bw_polygons,bw_areoles, polygon_LM,FullMetrics);
 % % construct color-coded images based on log area
 % im_polygons_rgb = fnc_polygon_image(polygon_stats, sk_polygon, total_area_mask);
 % im_areoles_rgb = fnc_polygon_image(areole_stats, sk_polygon, total_area_mask);
@@ -163,8 +163,8 @@
 % total_area = sum(bw_mask(:));
 % polygon_area = sum(G_polygons.Nodes.Area);
 % veins = fnc_summary_veins(G_veins,total_area,polygon_area,micron_per_pixel);
-% areoles = fnc_summary_areoles(G_areoles,polygon_area,micron_per_pixel);
-% polygons = fnc_summary_polygons(G_polygons,micron_per_pixel);
+% areoles = fnc_summary_areoles(G_areoles,polygon_area,micron_per_pixel,FullMetrics);
+% polygons = fnc_summary_polygons(G_polygons,micron_per_pixel,FullMetrics);
 % results = [veins areoles polygons];
 % %% add in results for the ROC analysis (if present)
 % if exist('PR','var')
@@ -204,38 +204,22 @@
 %     titles = {'original','CNN','Skeleton','width','areoles','dual graph'};
 %     display_figure(images,graphs,titles,G_polygons,E_width,[1:6],'Figure',ExportFigs);
 % end
-% 
-%% Hierarchical loop decomposition
-step = step+1;
-disp(['Step ' num2str(step) ': Hierarchical loop decomposition'])
-[HLD_levels, G_HLD, parent, HLD_metrics, im_HLD_order] = fnc_HLD(G_veins, G_polygons, G_areoles, polygon_stats, areole_stats, bw_polygons, bw_areoles, total_area, polygon_area, micron_per_pixel);
+
+% Hierarchical loop decomposition
+% step = step+1;
+% disp(['Step ' num2str(step) ': Hierarchical loop decomposition'])
+% [G_HLD, parent] = fnc_HLD(G_veins, G_polygons, G_areoles, polygon_stats, areole_stats, bw_polygons, bw_areoles, total_area, polygon_area, micron_per_pixel, ShowFigs,FullMetrics);
 % HLD display
 if ShowFigs == 1
     display_HLD(G_polygons,im_cnn,HLD_levels,im_HLD_order,G_HLD,parent);
 end
-if ExportFigs == 1
-    hfig = display_HLD(G_polygons,im_cnn,HLD_levels,im_HLD_order,G_HLD,parent);
-    saveas(hfig,[dir_out_HLD FolderName '_HLD.png'])
-    delete(hfig);
-    save([dir_out_HLD FolderName '_HLD_results.mat'],'G_HLD','parent','HLD_metrics')
-end
-% % % %% HLD slices
-% % % step = step+1;
-% % % disp(['Step ' num2str(step) ': HLD slices'])
-% % % [HLD_results,HLD_slices] = fnc_HLD_slices(G_veins,bw_cnn,bw_mask,total_area_mask,im_width,HLD_levels,micron_per_pixel);
-% % % %% Save the HLD data
-% % % if ExportFigs == 1
-% % %     step = step+1;
-% % %     disp(['Step ' num2str(step) ': saving HLD data'])
-% % %     % save the slice images as a matlab file
-% % %     save([dir_out_HLD FolderName '_HLD_slices.mat'],'HLD_slices')
-% % %     % save the slice data
-% % %     writetable(HLD_results,[dir_out_HLD FolderName '_HLD_results.xlsx'],'FileType','Spreadsheet','Range', 'A1','WriteVariableNames',1)
-% % %     if isunix
-% % %         fileattrib([dir_out_HLD FolderName '_HLD_results.xlsx'], '+w','a')
-% % %     end
-% % % end
-%end
+% if ExportFigs == 1
+%     hfig = display_HLD(G_polygons,im_cnn,HLD_levels,im_HLD_order,G_HLD,parent);
+%     saveas(hfig,[dir_out_HLD FolderName '_HLD.png'])
+%     delete(hfig);
+%     save([dir_out_HLD FolderName '_HLD_results.mat'],'G_HLD','parent','HLD_full_metrics','HLD_slice_metrics')
+% end
+% end
 
 function [im,im_cnn,bw_mask,bw_vein,bw_roi,bw_GT] = fnc_load_CNN_images(FolderName,DownSample)
 % get the contents of the directory
@@ -1459,7 +1443,6 @@ width(~bw_mask) = -1;
 end
 
 function [G_veins, sk_polygon, bw_polygons, bw_areoles, total_area_mask, polygon_LM] = fnc_polygon_find(G_veins,bw_cnn,sk,skLoop,bw_mask)
-[nY,nX] = size(bw_cnn);
 % remove any partial areas that are not fully bounded and therefore contact
 % the edge
 area = imclearborder(~sk & bw_mask,4);
@@ -1535,8 +1518,22 @@ im_polygons = uint8(im_polygons);
 im_polygons_rgb = uint8(255.*ind2rgb(im_polygons,cmap));
 end
 
-function [areole_stats,polygon_stats] = fnc_polygon_analysis(bw_polygons,bw_areoles, polygon_LM)
+function [areole_stats,polygon_stats] = fnc_polygon_analysis(bw_polygons,bw_areoles, polygon_LM,FullMetrics)
 % measure the stats for the polygonal regions using the label matrix
+if FullMetrics == 0
+    % don't calculate the most time consuming metrics (ConvexArea,
+    % Solidity) and the internal distance metrics.
+    polygon_stats = regionprops(polygon_LM, ...
+    'Area', ...
+    'Centroid', ...
+    'Eccentricity', ...
+    'EquivDiameter', ...
+    'MajorAxisLength', ...
+    'MinorAxisLength', ...
+    'Orientation', ...
+    'Perimeter', ...
+    'PixelIdxList');
+else
 P_stats = regionprops(polygon_LM, ...
     'Area', ...
     'Centroid', ...
@@ -1560,6 +1557,7 @@ D_stats = rmfield(D_stats,'MeanIntensity');
 names = [fieldnames(P_stats); fieldnames(D_stats)];
 % combine the two stats arrays
 polygon_stats = cell2struct([struct2cell(P_stats);struct2cell(D_stats)],names,1);
+end
 % calculate additional parameters
 % polygon_stats = P_stats;
 ID = num2cell(1:length(polygon_stats));
@@ -1575,7 +1573,21 @@ Roughness = num2cell(([polygon_stats.Perimeter].^2)./[polygon_stats.Area]);
 areole_LM = polygon_LM;
 areole_LM(~bw_areoles) = 0;
 % run all the stats for the areoles
-A_stats = regionprops(areole_LM, ...
+if FullMetrics == 0
+    % don't calculate the most time consuming metrics (ConvexArea,
+    % Solidity) and don't calculate the internal distance measures
+areole_stats = regionprops(areole_LM, ...
+    'Area', ...
+    'Centroid', ...
+    'Eccentricity', ...
+    'EquivDiameter', ...
+    'MajorAxisLength', ...
+    'MinorAxisLength', ...
+    'Orientation', ...
+    'Perimeter', ...
+    'PixelIdxList');
+else
+    A_stats = regionprops(areole_LM, ...
     'Area', ...
     'Centroid', ...
     'ConvexArea', ...
@@ -1606,6 +1618,7 @@ D_stats = rmfield(D_stats,'MeanIntensity');
 names = [fieldnames(A_stats); fieldnames(D_stats)];
 % combine the two stats arrays
 areole_stats = cell2struct([struct2cell(A_stats);struct2cell(D_stats)],names,1);
+end
 % calculate additional parameters
 % areole_stats = A_stats;
 ID = num2cell(1:length(areole_stats));
@@ -1727,7 +1740,6 @@ T = fnc_summary(T,G_veins.Nodes.node_Omin_Omaj,'N','Anx','circ',1);
 T = fnc_summary(T,G_veins.Nodes.node_Omid_Omaj,'N','Adx','circ',1);
 end
 
-
 function T = fnc_summary_veins_HLD(G_veins,total_area,polygon_area,micron_per_pixel)
 % set calibration factors
 mm = micron_per_pixel./1000;
@@ -1787,20 +1799,18 @@ T = fnc_summary(T,G_veins.Edges.Volume(E_idx),'VTot','Vol','none',mm^3);
 %T = fnc_summary(T,G_veins.Edges.Volume(T_idx),'VTree','Vol','none',mm^3);
 T = fnc_summary(T,G_veins.Edges.Tortuosity(E_idx),'V','Tor','none',1);
 T = fnc_summary(T,G_veins.Edges.Or_ij(E_idx),'V','Ori','circ',1);
-T = fnc_summary(T,G_veins.Nodes.node_Min,'N','Bmn','none',1);
-T = fnc_summary(T,G_veins.Nodes.node_Mid,'N','Bmd','none',1);
-T = fnc_summary(T,G_veins.Nodes.node_Maj,'N','Bmx','none',1);
-T = fnc_summary(T,G_veins.Nodes.node_Min_Mid,'N','Rnd','none',1);
-T = fnc_summary(T,G_veins.Nodes.node_Min_Maj,'N','Rnx','none',1);
-T = fnc_summary(T,G_veins.Nodes.node_Mid_Maj,'N','Rdx','none',1);
-T = fnc_summary(T,G_veins.Nodes.node_Omin_Omid,'N','And','circ',1);
-T = fnc_summary(T,G_veins.Nodes.node_Omin_Omaj,'N','Anx','circ',1);
-T = fnc_summary(T,G_veins.Nodes.node_Omid_Omaj,'N','Adx','circ',1);
+% T = fnc_summary(T,G_veins.Nodes.node_Min,'N','Bmn','none',1);
+% T = fnc_summary(T,G_veins.Nodes.node_Mid,'N','Bmd','none',1);
+% T = fnc_summary(T,G_veins.Nodes.node_Maj,'N','Bmx','none',1);
+% T = fnc_summary(T,G_veins.Nodes.node_Min_Mid,'N','Rnd','none',1);
+% T = fnc_summary(T,G_veins.Nodes.node_Min_Maj,'N','Rnx','none',1);
+% T = fnc_summary(T,G_veins.Nodes.node_Mid_Maj,'N','Rdx','none',1);
+% T = fnc_summary(T,G_veins.Nodes.node_Omin_Omid,'N','And','circ',1);
+% T = fnc_summary(T,G_veins.Nodes.node_Omin_Omaj,'N','Anx','circ',1);
+% T = fnc_summary(T,G_veins.Nodes.node_Omid_Omaj,'N','Adx','circ',1);
 end
 
-
-
-function T = fnc_summary_areoles(G_areoles,polygon_area,micron_per_pixel)
+function T = fnc_summary_areoles(G_areoles,polygon_area,micron_per_pixel,FullMetrics)
 % set calibration factors
 mm = micron_per_pixel./1000;
 T = table;
@@ -1810,22 +1820,25 @@ PTA = polygon_area.*(mm.^2);
 T.Aloop = T.ANN / PTA; % should be the same as T.Ploop
 % get areole statistics
 T = fnc_summary(T,G_areoles.Nodes.Area,'A','Are','none',mm^2);
-T = fnc_summary(T,G_areoles.Nodes.ConvexArea,'A','CnA','none',mm^2);
 T = fnc_summary(T,G_areoles.Nodes.Eccentricity,'A','Ecc','none',1);
 T = fnc_summary(T,G_areoles.Nodes.MajorAxisLength,'A','Maj','none',mm);
 T = fnc_summary(T,G_areoles.Nodes.MinorAxisLength,'A','Min','none',mm);
 T = fnc_summary(T,G_areoles.Nodes.EquivDiameter,'A','EqD','none',mm);
 T = fnc_summary(T,G_areoles.Nodes.Perimeter,'A','Per','none',mm);
-T = fnc_summary(T,G_areoles.Nodes.Solidity,'A','Sld','none',mm);
 T = fnc_summary(T,G_areoles.Nodes.Elongation,'A','Elg','none',1);
 T = fnc_summary(T,G_areoles.Nodes.Circularity,'A','Cir','none',1);
 T = fnc_summary(T,G_areoles.Nodes.Roughness,'A','Rgh','none',1);
 T = fnc_summary(T,G_areoles.Nodes.Orientation,'A','Ori','circ',1);
-T = fnc_summary(T,G_areoles.Nodes.MeanDistance,'A','Dav','none',1);
+
+if FullMetrics == 1
+    T = fnc_summary(T,G_areoles.Nodes.ConvexArea,'A','CnA','none',mm^2);
+    T = fnc_summary(T,G_areoles.Nodes.Solidity,'A','Sld','none',mm);
+    T = fnc_summary(T,G_areoles.Nodes.MeanDistance,'A','Dav','none',1);
 T = fnc_summary(T,G_areoles.Nodes.MaxDistance,'A','Dmx','none',1);
 end
+end
 
-function T = fnc_summary_polygons(G_polygons,micron_per_pixel)
+function T = fnc_summary_polygons(G_polygons,micron_per_pixel,FullMetrics)
 % set calibration factors
 mm = micron_per_pixel./1000;
 T = table;
@@ -1834,22 +1847,24 @@ T.PNN = numnodes(G_polygons);
 T.Ploop = T.PNN / T.PTA; % should be the same as T.Aloop
 % get polgonal area statistics
 T = fnc_summary(T,G_polygons.Nodes.Area,'P','Are','none',mm^2);
-T = fnc_summary(T,G_polygons.Nodes.ConvexArea,'P','CnA','none',mm^2);
 T = fnc_summary(T,G_polygons.Nodes.Eccentricity,'P','Ecc','none',1);
 T = fnc_summary(T,G_polygons.Nodes.MajorAxisLength,'P','Maj','none',mm);
 T = fnc_summary(T,G_polygons.Nodes.MinorAxisLength,'P','Min','none',mm);
 T = fnc_summary(T,G_polygons.Nodes.EquivDiameter,'P','EqD','none',mm);
 T = fnc_summary(T,G_polygons.Nodes.Perimeter,'P','Per','none',mm);
-T = fnc_summary(T,G_polygons.Nodes.Solidity,'P','Sld','none',mm);
 T = fnc_summary(T,G_polygons.Nodes.Elongation,'P','Elg','none',1);
 T = fnc_summary(T,G_polygons.Nodes.Circularity,'P','Cir','none',1);
 T = fnc_summary(T,G_polygons.Nodes.Roughness,'P','Rgh','none',1);
 T = fnc_summary(T,G_polygons.Nodes.Orientation,'P','Ori','circ',1);
+if FullMetrics == 1
+    T = fnc_summary(T,G_polygons.Nodes.ConvexArea,'P','CnA','none',mm^2);
+T = fnc_summary(T,G_polygons.Nodes.Solidity,'P','Sld','none',mm);
 T = fnc_summary(T,G_polygons.Nodes.MeanDistance,'P','Dav','none',1);
 T = fnc_summary(T,G_polygons.Nodes.MaxDistance,'P','Dmx','none',1);
 end
+end
 
-function T = fnc_summary_polygon_stats(polygon_stats,micron_per_pixel)
+function T = fnc_summary_polygon_stats(polygon_stats,micron_per_pixel,FullMetrics)
 % set calibration factors
 mm = micron_per_pixel./1000;
 T = table;
@@ -1858,22 +1873,24 @@ T.PNN = size(polygon_stats,1);
 T.Ploop = T.PNN / T.PTA; % should be the same as T.Aloop
 % get polgonal area statistics
 T = fnc_summary(T,[polygon_stats.Area],'P','Are','none',mm^2);
-T = fnc_summary(T,[polygon_stats.ConvexArea],'P','CnA','none',mm^2);
 T = fnc_summary(T,[polygon_stats.Eccentricity],'P','Ecc','none',1);
 T = fnc_summary(T,[polygon_stats.MajorAxisLength],'P','Maj','none',mm);
 T = fnc_summary(T,[polygon_stats.MinorAxisLength],'P','Min','none',mm);
 T = fnc_summary(T,[polygon_stats.EquivDiameter],'P','EqD','none',mm);
 T = fnc_summary(T,[polygon_stats.Perimeter],'P','Per','none',mm);
-T = fnc_summary(T,[polygon_stats.Solidity],'P','Sld','none',mm);
 T = fnc_summary(T,[polygon_stats.Elongation],'P','Elg','none',1);
 T = fnc_summary(T,[polygon_stats.Circularity],'P','Cir','none',1);
 T = fnc_summary(T,[polygon_stats.Roughness],'P','Rgh','none',1);
 T = fnc_summary(T,[polygon_stats.Orientation]','P','Ori','circ',1);
+if FullMetrics == 1
+    T = fnc_summary(T,[polygon_stats.ConvexArea],'P','CnA','none',mm^2);
+T = fnc_summary(T,[polygon_stats.Solidity],'P','Sld','none',mm);
 T = fnc_summary(T,[polygon_stats.MeanDistance],'P','Dav','none',1);
 T = fnc_summary(T,[polygon_stats.MaxDistance],'P','Dmx','none',1);
 end
+end
 
-function T = fnc_summary_areole_stats(areole_stats,polygon_area,micron_per_pixel)
+function T = fnc_summary_areole_stats(areole_stats,polygon_area,micron_per_pixel,FullMetrics)
 % set calibration factors
 mm = micron_per_pixel./1000;
 T = table;
@@ -1882,19 +1899,21 @@ T.ANN = size(areole_stats,1);
 T.Aloop = T.ANN / polygon_area; % should be the same as T.Ploop
 % get areole statistics
 T = fnc_summary(T,[areole_stats.Area],'A','Are','none',mm^2);
-T = fnc_summary(T,[areole_stats.ConvexArea],'A','CnA','none',mm^2);
 T = fnc_summary(T,[areole_stats.Eccentricity],'A','Ecc','none',1);
 T = fnc_summary(T,[areole_stats.MajorAxisLength],'A','Maj','none',mm);
 T = fnc_summary(T,[areole_stats.MinorAxisLength],'A','Min','none',mm);
 T = fnc_summary(T,[areole_stats.EquivDiameter],'A','EqD','none',mm);
 T = fnc_summary(T,[areole_stats.Perimeter],'A','Per','none',mm);
-T = fnc_summary(T,[areole_stats.Solidity],'A','Sld','none',mm);
 T = fnc_summary(T,[areole_stats.Elongation],'A','Elg','none',1);
 T = fnc_summary(T,[areole_stats.Circularity],'A','Cir','none',1);
 T = fnc_summary(T,[areole_stats.Roughness],'A','Rgh','none',1);
 T = fnc_summary(T,[areole_stats.Orientation]','A','Ori','circ',1);
+if FullMetrics == 1
+T = fnc_summary(T,[areole_stats.ConvexArea],'A','CnA','none',mm^2);
+T = fnc_summary(T,[areole_stats.Solidity],'A','Sld','none',mm);
 T = fnc_summary(T,[areole_stats.MeanDistance],'A','Dav','none',1);
 T = fnc_summary(T,[areole_stats.MaxDistance],'A','Dmx','none',1);
+end
 end
 
 function T = fnc_summary(T,metric,prefix,suffix,transform,units)
@@ -1922,7 +1941,7 @@ switch transform
     otherwise
         T.([prefix 'av' suffix]) = mean(metric).*units;
         T.([prefix 'md' suffix]) = median(metric).*units;
-        T.([prefix 'mo' suffix]) = mode(metric).*units;
+        %T.([prefix 'mo' suffix]) = mode(metric).*units;
         %         T.([prefix 'mn' suffix]) = min(metric).*units;
         %         T.([prefix 'mx' suffix]) = max(metric).*units;
         T.([prefix 'sd' suffix]) = std(metric).*units;
@@ -1930,49 +1949,53 @@ switch transform
 end
 end
 
-function [HLD_levels, G_HLD, parent, HLD_metrics, im_HLD_order] = fnc_HLD(G_veins, G_polygons, G_areoles, polygon_stats, areole_stats, bw_polygons, bw_areoles, total_area,polygon_area,micron_per_pixel)
+function [G_HLD, parent] = fnc_HLD(G_veins, G_polygons, G_areoles, polygon_stats, areole_stats, bw_polygons, bw_areoles, total_area,polygon_area,micron_per_pixel,ShowFigs,FullMetrics)
+tic
 % construct a full binary polygon CC object
 PCC.Connectivity = 4;
 PCC.ImageSize = size(bw_polygons);
 PCC.NumObjects = 1;
 PCC.PixelIdxList = {};
-% set up a slice CC object
-SlCC.Connectivity = 4;
-SlCC.ImageSize = size(bw_polygons);
-SlCC.NumObjects = 1;
-SlCC.PixelIdxList = {};
+% % set up a slice CC object
+% SlCC.Connectivity = 4;
+% SlCC.ImageSize = size(bw_polygons);
+% SlCC.NumObjects = 1;
+% SlCC.PixelIdxList = {};
 % select the largest component of the polygon graph
 CC = conncomp(G_polygons);
 idx = find(CC==1);
 G_polygons = subgraph(G_polygons,idx);
-% % extract the same component from the areole graph (which has the same node
-% % IDs as the polygon graph).
-% G_areoles = subgraph(G_areoles,idx);
 % extract the same component from the stats arrays
 polygon_stats = polygon_stats(idx);
-areole_stats = areole_stats(idx);
-% get the ID of the nodes remaining
-ID = G_polygons.Nodes.ID;
-% Keep veins from the vein graph that form part of the polygon_graph. These
-% will be the boundary edges and any internal tree-like parts of the
-% network, but will exclude edges from incomplete polygons on the boundary
-% or disconnected polygons. Edges should have Ai and/or
-% Aj corresponding to a polygon node ID.
-% hfig = figure;
-% hfig.Units = 'normalized';
-% hfig.Position = [0 0 0.8 1];
-% hfig.Color = 'w';
-% gplot(adjacency(G_veins),[G_veins.Nodes.node_X_pix,G_veins.Nodes.node_Y_pix],'k:')
-% axis off
-% axis ij
-% axis image
-% axis square
-% box on
-Eidx = ismember(G_veins.Edges.Ai,ID) | ismember(G_veins.Edges.Aj,ID);
-G_veins = rmedge(G_veins,find(~Eidx));
-% hold on
-% gplot(adjacency(G_veins),[G_veins.Nodes.node_X_pix,G_veins.Nodes.node_Y_pix],'k-')
-% drawnow
+% % % areole_stats = areole_stats(idx);
+% % % % get the ID of the nodes remaining
+% % % ID = G_polygons.Nodes.ID;
+% % % if ShowFigs == 1
+% % %     % plot the adjacency graph for the full network
+% % %     hfig = figure;
+% % %     hfig.Units = 'normalized';
+% % %     hfig.Position = [0 0 0.8 1];
+% % %     hfig.Color = 'w';
+% % %     gplot(adjacency(G_veins),[G_veins.Nodes.node_X_pix,G_veins.Nodes.node_Y_pix],'k:')
+% % %     axis off
+% % %     axis ij
+% % %     axis image
+% % %     axis square
+% % %     box on
+% % %     hold on
+% % % end
+% % % % Keep veins from the vein graph that form part of the polygon_graph. These
+% % % % will be the boundary edges and any internal tree-like parts of the
+% % % % network, but will exclude edges from incomplete polygons on the boundary
+% % % % or disconnected polygons. Edges should have Ai and/or
+% % % % Aj corresponding to a polygon node ID.
+% % % Eidx = ismember(G_veins.Edges.Ai,ID) | ismember(G_veins.Edges.Aj,ID);
+% % % G_veins = rmedge(G_veins,find(~Eidx));
+% % % if ShowFigs == 1
+% % %     % update the adjacency graph with the selected subset of veins
+% % %     gplot(adjacency(G_veins),[G_veins.Nodes.node_X_pix,G_veins.Nodes.node_Y_pix],'k-')
+% % %     drawnow
+% % % end
 % get the number of nodes and edge in the dual graph
 nnP = single(numnodes(G_polygons));
 neP = single(numedges(G_polygons));
@@ -1983,24 +2006,13 @@ node_Degree = [ones(nnP,1,'single'); zeros(nnP-1,1,'single')];
 node_Asymmetry = zeros(nnP*2-1,1,'single');
 node_HS = [ones(nnP,1,'single'); zeros(nnP-1,1,'single')];
 subtree_Asymmetry = zeros((2*nnP)-1,1,'single');
-% % dimension the graph metric arrays
-% wEdges = zeros(nnP,1,'single');
-% nNodes = zeros(nnP,1,'single');
-% nEdges = zeros(nnP,1,'single');
-% total_length = zeros(nnP,1,'single');
-% total_volume = zeros(nnP,1,'single');
-% FEV = zeros(nnP,1,'single');
-% set the first entry to the full graph
-% set the counter for the number of fusions
-Nf = 1;
-% wEdges(Nf) = 0;
-% nEdges(Nf) = single(numedges(G_veins));
-% nNodes(Nf) = single(numnodes(G_veins));
-% total_length(Nf) = single(sum(G_veins.Edges.Length));
-% total_volume(Nf) = single(sum(G_veins.Edges.Volume));
-% % calculate the number of FEV created
-% D = degree(G_veins);
-% FEV(Nf) = single(sum(D==1));
+%area_ = zeros((2*nnP)-1,1,'single');
+% area_Asymmetry = zeros((2*nnP)-1,1,'single');
+% redimension the stat arrays to accomodate all the fused nodes
+areole_stats(nnP.*2-1).Area = 0;
+polygon_stats(nnP.*2-1).Area = 0;
+% % % % set the counter for the number of fusions
+% % % Nf = 1;
 % order the edges by width in the polygon graph
 [W,idx] = sort(G_polygons.Edges{:,'Width'});
 % sort the edge nodes and edge name to match the ordered widths
@@ -2011,67 +2023,56 @@ ET = single([nodei nodej W]);
 % start the index for the new node (Nk) to follow on the number of existing
 % nodes (nnP)
 Nk = nnP;
-Nt(1) = nnP;
+% % % Nt(1) = nnP;
 Ne = 0;
-nLevels = 50;
-HLD_level_criteria = 'width';
-switch HLD_level_criteria
-    case 'area'
-        % set the first level for output in the HLD_movie to the nearest power of 2
-        % within the number of nodes. The level will count down from this
-        % number of areas until the final value is 1.
-        mx = 2*(nextpow2(nnP)-1);
-        criteria = single(round(sqrt(2).^(mx:-1:1)));
-    case 'number'
-        inc = neP/nLevels;
-        criteria = inc:inc:neP;
-    case 'width'
-        % set up the cumulative widths
-        csW = cumsum(W);
-        % use the discretize function to divide into equal number of bins
-        [~,BinEdges] = discretize(csW,min(neP,nLevels+1));
-        bins = BinEdges(2:end-1);
-        % find the nearest edge in csW that exceeds the bin edge
-        [~,criteria] = min(single(abs(csW-bins)));
-    case 'sq width'
-        % set up the cumulative widths
-        csW = (cumsum(W).^2);
-        % use the discretize function to divide into equal number of bins
-        [~,BinEdges] = discretize(csW,min(neP,nLevels+1));
-        bins = BinEdges(1:end);
-        % find the nearest edge in csW that exceeds the bin edge
-        [~,criteria] = min(single(abs(csW-bins)));
-    case 'sqrt width'
-        % set up the cumulative widths on a log scale
-        csW = sqrt(cumsum(W));
-        % use the discretize function to divide into equal number of bins
-        [~,BinEdges] = discretize(csW,min(neP,nLevels+1));
-        bins = BinEdges(2:end-1);
-        % find the index of the nearest edge in csW that exceeds the bin edge
-        [~,criteria] = min(single(abs(csW-bins)));
-        criteria = unique(criteria);
-end
-HLD_levels = zeros(numel(criteria),2,'single');
-nL = 1;
-% calculate the full set of summary statistics for the initial network 
-P = fnc_summary_polygon_stats(polygon_stats,micron_per_pixel);
-A = fnc_summary_areole_stats(areole_stats,polygon_area,micron_per_pixel);
-V = fnc_summary_veins_HLD(G_veins,total_area,polygon_area,micron_per_pixel);
-% As summary reduces the distribution for each variable for network object
-% to a single values, the summary statistics can be combined into a single
-% row vector
-HLD_metrics(1,:) = [V A P];
-Sl_HLD_metrics(1,:) = [V A P];
-
-% get all the current polygon PixelIdxList at the start as a cell array;
+% % % nLevels = 30;
+% % % HLD_level_criteria = 'width';
+% % % switch HLD_level_criteria
+% % %     case 'area'
+% % %         % set the first level for output in the HLD_movie to the nearest power of 2
+% % %         % within the number of nodes. The level will count down from this
+% % %         % number of areas until the final value is 1.
+% % %         mx = 2*(nextpow2(nnP)-1);
+% % %         criteria = single(round(sqrt(2).^(mx:-1:1)));
+% % %     case 'width'
+% % %         % set up the cumulative widths
+% % %         csW = cumsum(W);
+% % %         % use the discretize function to divide into equal number of bins
+% % %         [~,BinEdges] = discretize(csW,min(neP,nLevels+1));
+% % %         bins = BinEdges(2:end-1);
+% % %         % find the nearest edge in csW that exceeds each bin edge
+% % %         [~,criteria] = min(single(abs(csW-bins)));
+% % % end
+% % % % set up an array to hold the width criteria
+% % % HLD_levels = zeros(numel(criteria),2,'single');
+% % % nL = 1;
+% % calculate the full set of summary statistics for the initial network
+% % (excluding the separation into tree and loops)
+% V = fnc_summary_veins_HLD(G_veins,total_area,polygon_area,micron_per_pixel);
+% A = fnc_summary_areole_stats(areole_stats,polygon_area,micron_per_pixel,FullMetrics);
+% P = fnc_summary_polygon_stats(polygon_stats,micron_per_pixel,FullMetrics);
+% % As the summary functions reduce the distribution for each variable to a
+% % single values, the summary statistics can be combined into a single row
+% % vector for the remaining network (HLD_metrics) and each HLD slice
+% % (Sl_HLD_metrics)
+% HLD_full_metrics(1,:) = [V A P];
+% HLD_slice_metrics(1,:) = [V A P];
+% get all the current polygon PixelIdxLists at the start as a cell array;
 P_PIL = {polygon_stats.PixelIdxList};
+        PCC.NumObjects = length(P_PIL);
+        PCC.PixelIdxList  = {polygon_stats.PixelIdxList}';
+          LM = labelmatrix(PCC);
+P_stats = regionprops('table',LM,'Area','Centroid','Perimeter','MajorAxisLength','MinorAxisLength','Eccentricity','Orientation');
 % set up the endnodes
 EndNodes = zeros(nnP*2-2,2,'single');
 % set a colormap with nnP entries
-cols = jet(nnP);
-exclude = [];
-G_initial = G_veins;
-G_current = G_veins;
+% % % cols = jet(nnP);
+% % % % set up the array for nodes that are included at each level
+% % % include = cell(nLevels,1);
+% % % include{1} = 1:nnP;
+% % % % set up the array for nodes that are excluded at each step
+% % % exclude = zeros(nnP-1,2);
+% % % G_previous = G_veins;
 % loop through all the edges, calculating the metrics
 for iE = 1:neP
     % test each edge in sequence
@@ -2080,9 +2081,11 @@ for iE = 1:neP
     % the edge to be removed only links two areas if
     % the end nodes are different
     if Ni~=Nj
-        Nf = single(Nf+1);
+%         Nf = single(Nf+1);
         % create a new node
         Nk = single(Nk+1);
+        % get the width threshold for the HLD for this partition
+        width_threshold(Nk,1) = ET(1,3);
         % construct the EndNodes for the two new edges that connect Ni and Nj to Nk
         Ne = Ne+1;
         EndNodes(Ne,:) = [Ni Nk];
@@ -2090,10 +2093,8 @@ for iE = 1:neP
         EndNodes(Ne,:) = [Nj Nk];
         % sum the areas of the nodes to fuse
         node_Area(Nk) = node_Area(Ni)+node_Area(Nj);
-        % sum the degree 
+        % sum the degree of the subtree at each node
         node_Degree(Nk) = node_Degree(Ni)+node_Degree(Nj);
-        % get the width threshold for the HLD
-        width_threshold(Nk,1) = ET(1,3);
         % find a measure of the partition asymmetry of the
         % bifurcation vertex
         node_Asymmetry(Nk,1) = abs(node_Degree(Ni)-node_Degree(Nj))/max(node_Degree(Ni),node_Degree(Nj));
@@ -2117,29 +2118,328 @@ for iE = 1:neP
         % set the parent of the nodes to be fused to the new node
         parent(Ni) = Nk;
         parent(Nj) = Nk;
-        exclude = [exclude; Ni; Nj];
+        % add the PixelIdxList for the nodes that have fused to the new node
+        P_PIL(Nk) = {cat(1,P_PIL{Ni},P_PIL{Nj})};
+        % calculate the statistics for the new region and add them to the
+        % stats structures
+        PCC.NumObjects = 1;
+        PCC.PixelIdxList  = P_PIL(Nk);
+%         LM = labelmatrix(PCC);
+P_stats(Nk,:) = regionprops('table',PCC,'Area','Centroid','Perimeter','MajorAxisLength','MinorAxisLength','Eccentricity','Orientation');
+%         [A_stats,P_stats] = fnc_polygon_analysis(bw_polygons,bw_areoles, LM, FullMetrics);
+%         A_stats.ID = Nk;
+%         HLD_stats.ID = Nk;
+%         areole_stats(Nk) = A_stats;
+%         P_stats(Nk,:) = HLD_stats;
+% % %         % add the nodes that have fused to the exclude list
+% % %         exclude(Nf,:) = [Ni Nj];
+% % %         % find edges in the vein graph up to and including this edge width
+% % %         Eidx = G_veins.Edges.Width <= width_threshold(Nk,1);
+% % %         % remove these edges from the graph
+% % %         G_veins = rmedge(G_veins,find(Eidx));
+% % %         % only keep veins that are still connected to the largest component
+% % %         CC = conncomp(G_veins);
+% % %         [N,~] = histcounts(CC,max(CC));
+% % %         [~,idx] = max(N);
+% % %         G_veins = subgraph(G_veins,find(CC==idx));
+% % %         % replace any occurrences of the nodes that have fused with
+% % %         % the new node ID
+% % %         idx = G_veins.Edges.Ai == Ni | G_veins.Edges.Ai == Nj;
+% % %         G_veins.Edges.Ai(idx) = Nk;
+% % %         idx = G_veins.Edges.Aj == Ni | G_veins.Edges.Aj == Nj;
+% % %         G_veins.Edges.Aj(idx) = Nk;
+%         % check whether the current edge is above the threshold for
+%         % the next edge width interval
+%         switch HLD_level_criteria
+%             case 'area'
+%                 % count the number of nodes (areas) now present
+%                 nP = (2*nnP)-Nk;
+%                 % check whether the areas remaining are a power of sqrt(2).
+%                 % If so then record the current edge width to use as a
+%                 % threshold in the HLD movie
+%                 if nP <= criteria(nL)
+%                     HLD_levels(nL,:) = [ET(1,3),nP];
+%                     % increment the level counter
+%                     nL = nL + 1;
+%                     flag = 1;
+%                 else
+%                     flag = 0;
+%                 end
+%             case 'width'
+%                 
+%                 if iE >= criteria(nL)
+%                     % increment the level counter
+%                     nL = nL + 1;
+%                     flag = 1;
+%                 else
+%                     flag = 0;
+%                 end
+%         end
+%         if flag == 1
+%             % store the current width as a threshold
+%             HLD_levels(nL,:) = [ET(1,3),iE];
+%             % record the node at this threshold
+%             Nt(nL) = Nk;
+%             % collect all the nodes that are still present at this level
+%             include{nL} = setdiff(1:Nk,exclude(:));
+%             % calculate the stats for these nodes
+%             P = fnc_summary_polygon_stats(polygon_stats(include{nL}),micron_per_pixel,FullMetrics);
+%             A = fnc_summary_areole_stats(areole_stats(include{nL}),polygon_area,micron_per_pixel,FullMetrics);
+%             V = fnc_summary_veins_HLD(G_veins,total_area,polygon_area,micron_per_pixel);
+%             HLD_full_metrics(nL,:) = [V A P];
+%             % extract the veins that have been removed to calculate their stats
+%             % separately. Start by finding the edges that have been removed
+%             % between the previous network and the current network
+%             idx = ismember(G_previous.Edges.Name,G_veins.Edges.Name);
+%             G_cut = rmedge(G_previous,find(idx));
+%             % find the nodes that were remove at this level
+%             slice = setdiff(include{nL-1},include{nL});
+%             % calculate the stats for just these nodes
+%             SlP = fnc_summary_polygon_stats(polygon_stats(slice),micron_per_pixel,FullMetrics);
+%             SlA = fnc_summary_areole_stats(areole_stats(slice),polygon_area,micron_per_pixel,FullMetrics);
+%             SlV = fnc_summary_veins_HLD(G_cut,total_area,polygon_area,micron_per_pixel);
+%             HLD_slice_metrics(nL,:) = [SlV SlA SlP];
+%             if ShowFigs == 1
+%                 [X,Y] = gplot(adjacency(G_cut),[G_cut.Nodes.node_X_pix,G_cut.Nodes.node_Y_pix]);
+%                 plot(X, Y, '-', 'Color', cols(Nk-nnP,:)); %
+%                 drawnow
+%             end
+%             % take a copy of the current vein graph
+%             G_previous = G_veins;
+%         end
+    else
+        % delete the current edge as it lies within areas that are already
+        % fused
+        ET(1,:) = [];
+    end
+end
+% complete links to the root node
+parent(end+1) = Nk+1;
+parent = double(fliplr(max(parent(:)) - parent));
+% assemble the HLD graph object
+NodeTable = table((1:(2*nnP)-1)', width_threshold, node_Area, node_Degree, ...
+    node_Asymmetry, node_HS, subtree_Asymmetry, [P_stats.Perimeter], [P_stats.MajorAxisLength],[P_stats.MinorAxisLength],[P_stats.Eccentricity], [P_stats.Orientation], ...
+    'VariableNames',{'node_ID', 'width_threshold', 'node_Area', 'node_Degree', ...
+    'node_Asymmetry', 'node_HS', 'subtree_Asymmetry', 'Perimeter','MajorAxisLength', 'MinorAxisLength', 'Eccentricity','Orientation'});
+idx = NodeTable.node_Area == 0;
+NodeTable(idx,:) = [];
+EdgeTable = table(EndNodes, ...
+    'VariableNames', {'EndNodes'});
+idx = EdgeTable.EndNodes(:,1)==0;
+EdgeTable(idx,:) = [];
+idx = EdgeTable.EndNodes(:,2)==0;
+EdgeTable(idx,:) = [];
+% combine to form the HLD tree graph
+G_HLD = graph(EdgeTable, NodeTable);
+% export the decomposition order image
+%im_HLD_order = export_fig('HLD_coded','-png','-m4',hfig);
+%delete(hfig);
+% assignin('base','P_stats',P_stats)
+toc
+end
+
+function [HLD_levels, G_HLD, parent, HLD_full_metrics, HLD_slice_metrics, im_HLD_order] = fnc_HLD_old(G_veins, G_polygons, G_areoles, polygon_stats, areole_stats, bw_polygons, bw_areoles, total_area,polygon_area,micron_per_pixel,ShowFigs,FullMetrics)
+tic
+% construct a full binary polygon CC object
+PCC.Connectivity = 4;
+PCC.ImageSize = size(bw_polygons);
+PCC.NumObjects = 1;
+PCC.PixelIdxList = {};
+% % set up a slice CC object
+% SlCC.Connectivity = 4;
+% SlCC.ImageSize = size(bw_polygons);
+% SlCC.NumObjects = 1;
+% SlCC.PixelIdxList = {};
+% select the largest component of the polygon graph
+CC = conncomp(G_polygons);
+idx = find(CC==1);
+G_polygons = subgraph(G_polygons,idx);
+% % extract the same component from the areole graph (which has the same node
+% % IDs as the polygon graph).
+% G_areoles = subgraph(G_areoles,idx);
+% extract the same component from the stats arrays
+polygon_stats = polygon_stats(idx);
+areole_stats = areole_stats(idx);
+% get the ID of the nodes remaining
+ID = G_polygons.Nodes.ID;
+if ShowFigs == 1
+    % plot the adjacency graph for the full network
+    hfig = figure;
+    hfig.Units = 'normalized';
+    hfig.Position = [0 0 0.8 1];
+    hfig.Color = 'w';
+    gplot(adjacency(G_veins),[G_veins.Nodes.node_X_pix,G_veins.Nodes.node_Y_pix],'k:')
+    axis off
+    axis ij
+    axis image
+    axis square
+    box on
+    hold on
+end
+% Keep veins from the vein graph that form part of the polygon_graph. These
+% will be the boundary edges and any internal tree-like parts of the
+% network, but will exclude edges from incomplete polygons on the boundary
+% or disconnected polygons. Edges should have Ai and/or
+% Aj corresponding to a polygon node ID.
+Eidx = ismember(G_veins.Edges.Ai,ID) | ismember(G_veins.Edges.Aj,ID);
+G_veins = rmedge(G_veins,find(~Eidx));
+if ShowFigs == 1
+    % update the adjacency graph with the selected subset of veins
+    gplot(adjacency(G_veins),[G_veins.Nodes.node_X_pix,G_veins.Nodes.node_Y_pix],'k-')
+    drawnow
+end
+% get the number of nodes and edge in the dual graph
+nnP = single(numnodes(G_polygons));
+neP = single(numedges(G_polygons));
+parent = single(zeros(1,nnP));
+width_threshold = zeros((2*nnP)-1,1,'single');
+node_Area = [G_polygons.Nodes{:,'Area'}; zeros(nnP-1,1,'single')];
+node_Degree = [ones(nnP,1,'single'); zeros(nnP-1,1,'single')];
+node_Asymmetry = zeros(nnP*2-1,1,'single');
+node_HS = [ones(nnP,1,'single'); zeros(nnP-1,1,'single')];
+subtree_Asymmetry = zeros((2*nnP)-1,1,'single');
+%area_ = zeros((2*nnP)-1,1,'single');
+area_Asymmetry = zeros((2*nnP)-1,1,'single');
+% redimension the stat arrays to accomodate all the fused nodes
+areole_stats(nnP.*2-1).Area = 0;
+polygon_stats(nnP.*2-1).Area = 0;
+% set the counter for the number of fusions
+Nf = 1;
+% order the edges by width in the polygon graph
+[W,idx] = sort(G_polygons.Edges{:,'Width'});
+% sort the edge nodes and edge name to match the ordered widths
+nodei = G_polygons.Edges{idx,'EndNodes'}(:,1);
+nodej = G_polygons.Edges{idx,'EndNodes'}(:,2);
+% set up a list of the initial edges sorted by width
+ET = single([nodei nodej W]);
+% start the index for the new node (Nk) to follow on the number of existing
+% nodes (nnP)
+Nk = nnP;
+Nt(1) = nnP;
+Ne = 0;
+nLevels = 30;
+HLD_level_criteria = 'width';
+switch HLD_level_criteria
+    case 'area'
+        % set the first level for output in the HLD_movie to the nearest power of 2
+        % within the number of nodes. The level will count down from this
+        % number of areas until the final value is 1.
+        mx = 2*(nextpow2(nnP)-1);
+        criteria = single(round(sqrt(2).^(mx:-1:1)));
+    case 'width'
+        % set up the cumulative widths
+        csW = cumsum(W);
+        % use the discretize function to divide into equal number of bins
+        [~,BinEdges] = discretize(csW,min(neP,nLevels+1));
+        bins = BinEdges(2:end-1);
+        % find the nearest edge in csW that exceeds each bin edge
+        [~,criteria] = min(single(abs(csW-bins)));
+end
+% set up an array to hold the width criteria
+HLD_levels = zeros(numel(criteria),2,'single');
+nL = 1;
+% calculate the full set of summary statistics for the initial network
+% (excluding the separation into tree and loops)
+V = fnc_summary_veins_HLD(G_veins,total_area,polygon_area,micron_per_pixel);
+A = fnc_summary_areole_stats(areole_stats,polygon_area,micron_per_pixel,FullMetrics);
+P = fnc_summary_polygon_stats(polygon_stats,micron_per_pixel,FullMetrics);
+% As the summary functions reduce the distribution for each variable to a
+% single values, the summary statistics can be combined into a single row
+% vector for the remaining network (HLD_metrics) and each HLD slice
+% (Sl_HLD_metrics)
+HLD_full_metrics(1,:) = [V A P];
+HLD_slice_metrics(1,:) = [V A P];
+% get all the current polygon PixelIdxLists at the start as a cell array;
+P_PIL = {polygon_stats.PixelIdxList};
+% set up the endnodes
+EndNodes = zeros(nnP*2-2,2,'single');
+% set a colormap with nnP entries
+cols = jet(nnP);
+% set up the array for nodes that are included at each level
+include = cell(nLevels,1);
+include{1} = 1:nnP;
+% set up the array for nodes that are excluded at each step
+exclude = zeros(nnP-1,2);
+G_previous = G_veins;
+% loop through all the edges, calculating the metrics
+for iE = 1:neP
+    if Nf >10
+        break
+    end
+    % test each edge in sequence
+    Ni = ET(1,1);
+    Nj = ET(1,2);
+    % the edge to be removed only links two areas if
+    % the end nodes are different
+    if Ni~=Nj
+        Nf = single(Nf+1);
+        % create a new node
+        Nk = single(Nk+1);
+        % get the width threshold for the HLD for this partition
+        width_threshold(Nk,1) = ET(1,3);
+        % construct the EndNodes for the two new edges that connect Ni and Nj to Nk
+        Ne = Ne+1;
+        EndNodes(Ne,:) = [Ni Nk];
+        Ne = Ne+1;
+        EndNodes(Ne,:) = [Nj Nk];
+        % sum the areas of the nodes to fuse
+        node_Area(Nk) = node_Area(Ni)+node_Area(Nj);
+        % sum the degree of the subtree at each node
+        node_Degree(Nk) = node_Degree(Ni)+node_Degree(Nj);
+        % find a measure of the partition asymmetry of the
+        % bifurcation vertex
+        node_Asymmetry(Nk,1) = abs(node_Degree(Ni)-node_Degree(Nj))/max(node_Degree(Ni),node_Degree(Nj));
+        % calculate the subtree asymmetry
+        subtree_Asymmetry(Nk,1) = (1/(node_Degree(Nk)-1))*((node_Asymmetry(Ni)*(node_Degree(Ni)-1))+(node_Asymmetry(Nj)*(node_Degree(Nj)-1)));
+        % Strahler index: keep the larger of the Horton-Strahler indices if they
+        % are not equal. If they are equal, increment the HS index by one
+        if node_HS(Ni) ~= node_HS(Nj)
+            node_HS(Nk,1) = max(node_HS(Ni),node_HS(Nj));
+        else
+            node_HS(Nk,1) = node_HS(Ni)+1;
+        end
+        % delete the current edge
+        ET(1,:) = [];
+        % replace any other occurrences of the nodes that have fused with
+        % the new node ID
+        idx = ET(:,1) == Ni | ET(:,1) == Nj;
+        ET(idx,1) = Nk;
+        idx = ET(:,2) == Ni | ET(:,2) == Nj;
+        ET(idx,2) = Nk;
+        % set the parent of the nodes to be fused to the new node
+        parent(Ni) = Nk;
+        parent(Nj) = Nk;
+        % add the PixelIdxList for the nodes that have fused to the new node
+        P_PIL(Nk) = {cat(1,P_PIL{Ni},P_PIL{Nj})};
+        % calculate the statistics for the new region and add them to the
+        % stats structures
+        PCC.NumObjects = 1;
+        PCC.PixelIdxList  = P_PIL(Nk);
+        LM = labelmatrix(PCC);
+        [A_stats,P_stats] = fnc_polygon_analysis(bw_polygons,bw_areoles, LM, FullMetrics);
+        A_stats.ID = Nk;
+        P_stats.ID = Nk;
+        areole_stats(Nk) = A_stats;
+        polygon_stats(Nk) = P_stats;
+        % add the nodes that have fused to the exclude list
+        exclude(Nf,:) = [Ni Nj];
         % find edges in the vein graph up to and including this edge width
         Eidx = G_veins.Edges.Width <= width_threshold(Nk,1);
         % remove these edges from the graph
         G_veins = rmedge(G_veins,find(Eidx));
-        % only keep veins that are still connected
+        % only keep veins that are still connected to the largest component
         CC = conncomp(G_veins);
         [N,~] = histcounts(CC,max(CC));
         [~,idx] = max(N);
         G_veins = subgraph(G_veins,find(CC==idx));
-        % replace any other occurrences of the nodes that have fused with
+        % replace any occurrences of the nodes that have fused with
         % the new node ID
         idx = G_veins.Edges.Ai == Ni | G_veins.Edges.Ai == Nj;
         G_veins.Edges.Ai(idx) = Nk;
         idx = G_veins.Edges.Aj == Ni | G_veins.Edges.Aj == Nj;
         G_veins.Edges.Aj(idx) = Nk;
-        % plot the graph and re-colour the edges remaining with the index
-        % into the custom colormap
-%         [X,Y] = gplot(adjacency(G_veins),[G_veins.Nodes.node_X_pix,G_veins.Nodes.node_Y_pix]);
-%         plot(X, Y, '-', 'Color', cols(Nk-nnP,:));
-%         drawnow
-        % add the PixelIdxList for the nodes that have fused to the new node
-        P_PIL(Nk) = {cat(1,P_PIL{Ni},P_PIL{Nj})};
+        % check whether the current edge is above the threshold for
+        % the next edge width interval
         switch HLD_level_criteria
             case 'area'
                 % count the number of nodes (areas) now present
@@ -2151,67 +2451,51 @@ for iE = 1:neP
                     HLD_levels(nL,:) = [ET(1,3),nP];
                     % increment the level counter
                     nL = nL + 1;
+                    flag = 1;
+                else
+                    flag = 0;
                 end
-            case {'width';'log width';'sqrt width';'sq width';'number'}
-                % check whether the current edge is above the threshold for
-                % the next edge width interval
+            case 'width'
+                
                 if iE >= criteria(nL)
-                    % store the current width as a threshold to segment the
-                    % weighted skeleton array
-                    HLD_levels(nL,:) = [ET(1,3),iE];
                     % increment the level counter
                     nL = nL + 1;
-                    % record the node at this threshold
-                    Nt(nL) = Nk;
-                    include = setdiff(1:Nk,exclude);
-                    % NOTE THIS CALCULATES THE STATS ON THE COMPLETE
-                    % REGION IMAGE NOT JUST THE NEW REGION WHICH WOULD BE
-                    % QUICKER
-                    PCC.NumObjects = length(include);
-                    PCC.PixelIdxList  = P_PIL(include);
-                    LM = labelmatrix(PCC);
-                    % calculate all the metrics for the complete new image
-                    % including the new fused region
-                    [A_stats,P_stats] = fnc_polygon_analysis(bw_polygons,bw_areoles, LM);
-                    P = fnc_summary_polygon_stats(P_stats,micron_per_pixel);
-                    A = fnc_summary_areole_stats(A_stats,polygon_area,micron_per_pixel);
-                    V = fnc_summary_veins_HLD(G_veins,total_area,polygon_area,micron_per_pixel);
-                    HLD_metrics(nL,:) = [V A P];
-                    % extract the veins that have been removed to calculate their stats
-                    % separately. Start by finding the nodes that have been removed
-                    idx = setdiff(G_current.Nodes.node_ID,G_veins.Nodes.node_ID);
-                    G_cut = subgraph(G_current,idx);
-%                     C(nL,:) = fnc_summary_veins(G_cut,total_area,polygon_area,micron_per_pixel)
-                    % get the polygons and areoles that have fused
-                                        SlCC.NumObjects = length(Nt(nL-1):Nt(nL));
-                    SlCC.PixelIdxList  = P_PIL(Nt(nL-1):Nt(nL));
-                    SlLM = labelmatrix(SlCC);
-                    figure
-                    imshow(SlLM,[])
-                    % calculate all the metrics for the complete image
-                    % including the new fused regions. There may be some
-                    % areas that are set to zero as they have been subsimed
-                    % into a larger area within the selected bin intervals.
-                    [Sl_A_stats,Sl_P_stats] = fnc_polygon_analysis(bw_polygons,bw_areoles, SlLM);
-                    idxA = find([Sl_A_stats.Area]>0);
-                    SlP = fnc_summary_polygon_stats(Sl_P_stats(idxA),micron_per_pixel);
-                    SlA = fnc_summary_areole_stats(Sl_A_stats(idxA),polygon_area,micron_per_pixel);
-                    SlV = fnc_summary_veins_HLD(G_cut,total_area,polygon_area,micron_per_pixel);
-                    Sl_HLD_metrics(nL,:) = [SlV SlA SlP]
-                    hold on
-
-                    [X,Y] = gplot(adjacency(G_initial),[G_initial.Nodes.node_X_pix,G_initial.Nodes.node_Y_pix]);
-                    plot(X, Y, '-', 'Color', 'w');
-                     [X,Y] = gplot(adjacency(G_cut),[G_cut.Nodes.node_X_pix,G_cut.Nodes.node_Y_pix]);
-                    plot(X, Y, '-', 'Color', cols(Nk-nnP,:));
-                    drawnow                   
-                    [X,Y] = gplot(adjacency(G_veins),[G_veins.Nodes.node_X_pix,G_veins.Nodes.node_Y_pix]);
-                    plot(X, Y, ':', 'Color', 'r');
-                    
-                    drawnow
-                            % take a copy of the current vein graph
-        G_current = G_veins;
+                    flag = 1;
+                else
+                    flag = 0;
                 end
+        end
+        if flag == 1
+            % store the current width as a threshold
+            HLD_levels(nL,:) = [ET(1,3),iE];
+            % record the node at this threshold
+            Nt(nL) = Nk;
+            % collect all the nodes that are still present at this level
+            include{nL} = setdiff(1:Nk,exclude(:));
+            % calculate the stats for these nodes
+            P = fnc_summary_polygon_stats(polygon_stats(include{nL}),micron_per_pixel,FullMetrics);
+            A = fnc_summary_areole_stats(areole_stats(include{nL}),polygon_area,micron_per_pixel,FullMetrics);
+            V = fnc_summary_veins_HLD(G_veins,total_area,polygon_area,micron_per_pixel);
+            HLD_full_metrics(nL,:) = [V A P];
+            % extract the veins that have been removed to calculate their stats
+            % separately. Start by finding the edges that have been removed
+            % between the previous network and the current network
+            idx = ismember(G_previous.Edges.Name,G_veins.Edges.Name);
+            G_cut = rmedge(G_previous,find(idx));
+            % find the nodes that were remove at this level
+            slice = setdiff(include{nL-1},include{nL});
+            % calculate the stats for just these nodes
+            SlP = fnc_summary_polygon_stats(polygon_stats(slice),micron_per_pixel,FullMetrics);
+            SlA = fnc_summary_areole_stats(areole_stats(slice),polygon_area,micron_per_pixel,FullMetrics);
+            SlV = fnc_summary_veins_HLD(G_cut,total_area,polygon_area,micron_per_pixel);
+            HLD_slice_metrics(nL,:) = [SlV SlA SlP];
+            if ShowFigs == 1
+                [X,Y] = gplot(adjacency(G_cut),[G_cut.Nodes.node_X_pix,G_cut.Nodes.node_Y_pix]);
+                plot(X, Y, '-', 'Color', cols(Nk-nnP,:)); %
+                drawnow
+            end
+            % take a copy of the current vein graph
+            G_previous = G_veins;
         end
     else
         % delete the current edge as it lies within areas that are already
@@ -2223,8 +2507,8 @@ end
 parent(end+1) = Nk+1;
 parent = double(fliplr(max(parent(:)) - parent));
 % assemble the HLD graph object
-NodeTable = table((1:(2*nnP)-1)', width_threshold, node_Area, node_Degree, node_Asymmetry, node_HS,subtree_Asymmetry, ...
-    'VariableNames',{'node_ID' 'width_threshold' 'node_Area' 'node_Degree' 'node_Asymmetry' 'node_HS' 'subtree_Asymmetry'});
+NodeTable = table((1:(2*nnP)-1)', width_threshold, node_Area, node_Degree, node_Asymmetry, node_HS,subtree_Asymmetry, area_Asymmetry, ...
+    'VariableNames',{'node_ID' 'width_threshold' 'node_Area' 'node_Degree' 'node_Asymmetry' 'node_HS' 'subtree_Asymmetry' 'area_Asymmetry' });
 idx = NodeTable.node_Area == 0;
 NodeTable(idx,:) = [];
 EdgeTable = table(EndNodes, ...
@@ -2235,57 +2519,10 @@ idx = EdgeTable.EndNodes(:,2)==0;
 EdgeTable(idx,:) = [];
 % combine to form the HLD tree graph
 G_HLD = graph(EdgeTable, NodeTable);
-% % % % create a table for the HLD metrics for the network decomposition
-% % % HLD_G_metrics = table((0:length(nNodes)-1)', wEdges, nNodes, nEdges, total_length, total_volume, FEV, ...
-% % %      'VariableNames',{'fusion_number' 'width_threshold' 'vein_nodes' 'vein_edges' 'total_length' 'total_volume' 'FEV'});
-% im_HLD_order = export_fig('HLD_coded','-png','-m4',hfig);
+% export the decomposition order image
+%im_HLD_order = export_fig('HLD_coded','-png','-m4',hfig);
 %delete(hfig);
-assignin('base','Sl_HLD_metrics',Sl_HLD_metrics)
-end
-
-function [HLD_results,HLD_slices] = fnc_HLD_slices(G_veins,bw_cnn,bw_mask,total_area_mask,width,HLD_levels,micron_per_pixel)
-% remove the negative mask pixels from the width image
-width(width<0) = 0;
-% remove any rows that were not set during the threshold
-% selection
-HLD_levels(HLD_levels(:,1)==0,:) = [];
-% start the levels at 0
-HLD_levels = [0 0; HLD_levels];
-nLevels = size(HLD_levels,1);
-% set up a movie array
-sz = size(imresize(total_area_mask, 0.25));
-HLD_slices = zeros(sz(1),sz(2),3,1,nLevels,'uint8');
-% get the border
-border = bwperim(total_area_mask);
-% clear the results array
-HLD_results = table;
-for iW = 1:nLevels
-    % Get the skeleton for pixels above the width
-    sk = width > HLD_levels(iW,1);
-    % only keep the connected skeleton and the border
-    sk = bwareafilt(sk,1) | border;
-    % run the polygon analysis and extact the graphs
-    [G_veins,areole_stats,polygon_stats,~,im_polygons_rgb,~] = fnc_polygon_analysis(G_veins,bw_cnn,sk,bw_mask);
-    [G_areoles] = fnc_area_graph(G_veins,areole_stats);
-    [G_polygons] = fnc_area_graph(G_veins,polygon_stats);
-    % get the ID of the nodes remaining
-    ID = G_polygons.Nodes.ID;
-    % Keep veins from the vein graph that form part of the polygon_graph. These
-    % will be the boundary edges and any internal tree-like parts of the
-    % network, but will exclude edges from incomplete polygons on the boundary
-    % or disconnected polygons. Edges should have Ai and/or
-    % Aj within ID.
-    Eidx = ismember(G_veins.Edges.Ai,ID) | ismember(G_veins.Edges.Aj,ID);
-    G_veins = rmedge(G_veins,find(~Eidx));
-    % calculate the summary statistics for the areoles and polygons
-    veins = fnc_summary_veins(total_area_mask,G_veins,G_polygons,micron_per_pixel);
-    areoles = fnc_summary_areoles(G_areoles,G_polygons,micron_per_pixel);
-    polygons = fnc_summary_polygons(G_polygons,micron_per_pixel);
-    % update the results table
-    HLD_results(iW,:) = [veins areoles polygons];
-    % construct the movie
-    HLD_slices(:,:,:,1,iW) = imresize(im_polygons_rgb, [sz(1) sz(2)]);
-end
+toc
 end
 
 function hfig = display_PR(PR, FolderName)
@@ -2404,8 +2641,10 @@ ax(1) = subplot(3,3,1);
     axes(ax(1))
     pos = ax(1).OuterPosition;
     ax(1).Position = pos;
-
-imshow(im_cnn,[])
+sz = size(im_cnn);
+r = [round(sz(1)./3):round(sz(1).*2/3)];
+c = [round(sz(2)./3):round(sz(2).*2/3)];
+imshow(im_cnn(r,c),[])
 % get edge width
 E = G_polygons.Edges.Width;
 E(isinf(E)) = nan;
@@ -2460,30 +2699,37 @@ plot(Bifurcation_ratio,'ro-')
 xlabel('Strahler number')
 ylabel('bifurcation ratio')
 box on
-
-% display the cumulative width pdf
-W = sort(G_polygons.Edges{:,'Width'});
+% display the tree width histogram
 subplot(3,3,7)
-plot(cumsum(W),'k-')
-hold on
-plot([HLD_levels(:,2) HLD_levels(:,2)],ylim,'r:')
-xlabel('edge number')
-ylabel('cumulative width')
-
-box on
-% display the removal order image
-% subplot(3,3,8)
-ax(8) = subplot(3,3,8);
-    axes(ax(8))
-    pos = ax(8).OuterPosition;
-    ax(8).Position = pos;
-
-imshow(im_HLD_order)
-axis off
-box on
-% display the metric scaling relationship
-subplot(3,3,9);
-histogram
+[TR,D] = shortestpathtree(G_HLD,18793,'OutputForm','cell');
+histogram(G_HLD.Nodes.width_threshold([TR{:}]),100)
+% display the eccentricity against width threshold
+subplot(3,3,8)
+plot(G_HLD.Nodes.width_threshold([TR{:}]),G_HLD.Nodes.Eccentricity([TR{:}]),'.')
+% % display the cumulative width pdf
+% W = sort(G_polygons.Edges{:,'Width'});
+% subplot(3,3,7)
+% plot(cumsum(W),'k-')
+% hold on
+% plot([HLD_levels(:,2) HLD_levels(:,2)],ylim,'r:')
+% xlabel('edge number')
+% ylabel('cumulative width')
+% 
+% box on
+% % display the removal order image
+% % subplot(3,3,8)
+% ax(8) = subplot(3,3,8);
+%     axes(ax(8))
+%     pos = ax(8).OuterPosition;
+%     ax(8).Position = pos;
+% 
+% imshow(im_HLD_order)
+% axis off
+% box on
+% % display the metric scaling relationship
+% subplot(3,3,9);
+% histogram
 end
+
 
 

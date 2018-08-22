@@ -3,11 +3,12 @@ clc
 clear
 remote = 0;
 ShowFigs = 1;
-ExportFigs = 1;
+ExportFigs = 0;
+FullMetrics = 0;
 %% set up parameters
 micron_per_pixel = 1.6807;
-DownSample = 2;
-%% set up starting directory
+DownSample = 3;
+%% set up starting directory on the remote server
 if remote == 1
     addpath('/soge-home/projects/leaf-gpu/Matlab working')
     addpath('/soge-home/projects/leaf-gpu/results')
@@ -16,7 +17,7 @@ if remote == 1
 else
     dir_in = pwd;
 end
-%% Set-up working directories
+%% Set-up working directories and write permisions
 cd(dir_in)
 if ~exist('summary','dir')
     mkdir('summary')
@@ -87,7 +88,7 @@ for iF = 1:numel(FolderNames)
         % change the working directory
         cd(FolderNames{iF});
         % run the analysis
-        results = MDFLeafVeinAnalysis_v4(FolderNames{iF},micron_per_pixel,DownSample,ShowFigs,ExportFigs);
+        results = MDFLeafVeinAnalysis_v5(FolderNames{iF},micron_per_pixel,DownSample,ShowFigs,ExportFigs,FullMetrics);
         % reset the working directory
         cd(dir_out_summary)
         % save the results to a single file
