@@ -3,8 +3,8 @@ clc
 clear
 remote = 0;
 ShowFigs = 1;
-ExportFigs = 0;
-FullMetrics = 0;
+ExportFigs = 1;
+FullMetrics = 1;
 %% set up parameters
 micron_per_pixel = 1.6807;
 DownSample = 3;

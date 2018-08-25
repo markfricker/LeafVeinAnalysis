@@ -1,225 +1,225 @@
-% %function results = MDFLeafVeinAnalysis_v5(FolderName,micron_per_pixel,DownSample,ShowFigs,ExportFigs,FullMetrics)
-% %% set up directories
-% dir_out_images = ['..' filesep 'summary' filesep 'images' filesep];
-% dir_out_width = ['..' filesep 'summary' filesep 'width' filesep];
-% dir_out_data = ['..' filesep 'summary' filesep 'data' filesep];
-% dir_out_HLD = ['..' filesep 'summary' filesep 'HLD' filesep];
-% dir_out_PR_results = ['..' filesep 'summary' filesep 'PR' filesep 'results' filesep];
-% dir_out_PR_images = ['..' filesep 'summary' filesep 'PR' filesep 'images' filesep];
-% dir_out_PR_graphs = ['..' filesep 'summary' filesep 'PR' filesep 'graphs' filesep];
-% dir_out_PR_fig = ['..' filesep 'summary' filesep 'PR' filesep 'fig' filesep];
-% %% set up parameters
-% micron_per_pixel = micron_per_pixel.*DownSample;
-% sk_width = 3;
-% E_width = 2;
-% cmap = jet(256);
-% cmap(1,:) = 0;
-% step = 0;
-% warning off
-% %% Load in the images
-% step = step+1;
-% disp(['Step ' num2str(step) ': Processing ' FolderName])
-% [im,im_cnn,bw_mask,bw_vein,bw_roi,bw_GT] = fnc_load_CNN_images(FolderName,DownSample);
-% %% test the performance against the internal ground truth
-% if any(bw_GT(:))
-%     step = step+1;
-%     disp(['Step ' num2str(step) ': Precision-Recall analysis'])
-%     fout = [dir_out_PR_fig FolderName];
-%     PR = fnc_precision_recall(im,im_cnn,bw_mask,bw_vein,bw_roi,bw_GT,DownSample,fout);
-%     if ShowFigs == 1
-%         % display the PR curves for the full-width binary image and the
-%         % skeleton
-%         display_PR(PR, FolderName);
-%         display_sk_PR(PR, FolderName);
-%     end
-%     if ExportFigs == 1
-%         step = step+1;
-%         disp(['Step ' num2str(step) ': Saving PR data'])
-%         % save the results
-%         save([dir_out_PR_results FolderName '_PR.mat'],'PR')
-%         % save the color-coded full-width PR image
-%         fout = [dir_out_PR_images FolderName '_PR.png'];
-%         imwrite(PR.images.cnn(:,:,:,PR.evaluation{'cnn','F1_idx'}),fout,'png')
-%         % save the color-coded PR skeleton image
-%         fout = [dir_out_PR_images FolderName '_sk_PR.png'];
-%         imwrite(PR.images.cnn_sk(:,:,:,PR.evaluation{'cnn_sk','F1_idx'}),fout,'png')
-%         % save the full-width PR curve
-%         hfig1 = display_PR(PR, FolderName);
-%         saveas(hfig1,[dir_out_PR_graphs FolderName '_PRC.png'])
-%         delete(hfig1);
-%         % save the PR skeleton curve
-%         hfig2 = display_sk_PR(PR, FolderName);
-%         saveas(hfig2,[dir_out_PR_graphs FolderName '_sk_PRC.png'])
-%         delete(hfig2);
-%     end
-% else
-%     PR = [];
-% end
-% %% get the skeleton
-% step = step+1;
-% disp(['Step ' num2str(step) ': Skeleton extraction'])
-% if exist('PR','var')
-%     % use the threshold value determined from the PR analysis
-%     [bw_cnn, sk, skLoop, skTree] = fnc_skeleton(im_cnn,bw_vein,PR.evaluation{'cnn','F1_threshold'});
-% else
-%     % use a standard threshold
-%     [bw_cnn, sk, skLoop, skTree] = fnc_skeleton(im_cnn,bw_vein,0.45);
-% end
-% %% calculate the width from the distance transform of the binarized cnn image
-% step = step+1;
-% disp(['Step ' num2str(step) ': Calculating width from distance transform'])
-% [im_distance, ~] = bwdist(~bw_cnn,'Euclidean');
-% % extract the initial width along the skeleton from the distance transform
-% W_pixels = zeros(size(im_distance),'single');
-% W_pixels(sk) = single(im_distance(sk).*2);
-% % % % %% calculate the width using granulometry
-% % % % step = step+1;
-% % % % disp(['Step ' num2str(step) ': Calculating width using granulometry'])
-% % % % %im_width = fnc_granulometry(imcomplement(mat2gray(im)),DownSample);
-% % % % im_width = fnc_granulometry(im_cnn,DownSample);
-% % % % W_pixels = zeros(size(im_width),'single');
-% % % % W_pixels(sk) = single(im_width(sk).*2);
-% %% set up the segmentation figure
-% if ShowFigs == 1
-%     warning off images:initSize:adjustingMag
-%     warning off MATLAB:LargeImage
-%     images = {im,im_cnn,bw_mask,imdilate(single(cat(3,skLoop,skTree,skLoop)), ones(3)),im_distance,imdilate(W_pixels, ones(3))};
-%     graphs = {'none','none','none','none','none','none'};
-%     titles = {'original','CNN','Mask','Skeleton','Distance','Width (pixels)'};
-%     display_figure(images,graphs,titles,[],E_width,[1:6],'Segmentation',ExportFigs);
-% end
-% 
-% %% extract network using the thinned skeleton
-% step = step+1;
-% disp(['Step ' num2str(step) ': Extracting the network'])
-% % collect a cell array of connected edge pixels
-% [edgelist, edgeim] = edgelink(sk);
-% %% find any self loops and split them
-% step = step+1;
-% disp(['Step ' num2str(step) ': Resolving self loops'])
-% [edgelist, edgeim] = fnc_resolve_self_loops(edgelist,edgeim);
-% %% resolve duplicate edges by splitting one edge into two
-% step = step+1;
-% disp(['Step ' num2str(step) ': Resolving duplicates'])
-% [edgelist, edgeim] = fnc_resolve_duplicates(edgelist,edgeim);
-% %% construct the weighted graph
-% step = step+1;
-% disp(['Step ' num2str(step) ': Weighted graph'])
-% [G_veins,edgelist] = fnc_weighted_graph(edgelist,W_pixels,skLoop,skTree);
-% %% Refine the width
-% step = step+1;
-% disp(['Step ' num2str(step) ': Refining width'])
-% [G_veins,edgelist_center] = fnc_refine_width(G_veins,edgelist,im,im_cnn,W_pixels);
-% %% calculate a pixel skeleton for the center weighted edges
-% step = step+1;
-% disp(['Step ' num2str(step) ': Colour-coded skeleton'])
-% [CW_pixels,im_width,coded] = fnc_coded_skeleton(im,sk,bw_mask,G_veins,edgelist,edgelist_center,sk_width,cmap);
-% %% display the weighted network
-% step = step+1;
-% disp(['Step ' num2str(step) ': Image display'])
-% if ShowFigs == 1
-%     warning off images:initSize:adjustingMag
-%     warning off MATLAB:LargeImage
-%     if exist('PR','var')
-%         images = {im_cnn,im_cnn,CW_pixels,coded,PR.images.cnn(:,:,:,PR.evaluation{'cnn','F1_idx'}),PR.images.cnn_sk(:,:,:,PR.evaluation{'cnn_sk','F1_idx'})};
-%     else
-%         images = {im_cnn,im_cnn,CW_pixels,coded,[],[]};
-%     end
-%     graphs = {'Width_initial','Width','none','none','none','none'};
-%     titles = {'Original width','center-weighted width','width (pixels)','coded','precision-recall full width','precision-recall skeleton'};
-%     display_figure(images,graphs,titles,G_veins,E_width,[1:4],'Width',ExportFigs);
-% end
-% if ExportFigs == 1
-%     step = step+1;
-%     disp(['Step ' num2str(step) ': Saving width images'])
-%     [nY,nX,nC] = size(coded);
-%     % save the color-coded width image
-%     fout = [dir_out_images FolderName '_width.png'];
-%     imwrite(coded,fout,'png','Xresolution',nX,'Yresolution',nY)
-%     % save the greyscale width array as a matlab file. Note outside the
-%     % masked area is now coded as -1
-%     save([dir_out_width FolderName '_Width_array'],'im_width')
-% %     % save the greyscale width image as a uint8 image
-% %     fout = [dir_out_width FolderName '_width_gray.png'];
-% %     imwrite(uint8(im_width),fout,'png','Xresolution',nX,'Yresolution',nY)
-% end
-% % find the areoles
-% step = step+1;
-% disp(['Step ' num2str(step) ': polygon analysis'])
-% % find the polygon and areole areas
-% [G_veins, sk_polygon, bw_polygons, bw_areoles, total_area_mask, polygon_LM] = fnc_polygon_find(G_veins,bw_cnn,sk,skLoop,bw_mask);
-%  [areole_stats,polygon_stats] = fnc_polygon_analysis(bw_polygons,bw_areoles, polygon_LM,FullMetrics);
-% % construct color-coded images based on log area
-% im_polygons_rgb = fnc_polygon_image(polygon_stats, sk_polygon, total_area_mask);
-% im_areoles_rgb = fnc_polygon_image(areole_stats, sk_polygon, total_area_mask);
-% % convert to an areole graph and a polygon graph
-% step = step+1;
-% disp(['Step ' num2str(step) ': Dual graph'])
-% [G_areoles] = fnc_area_graph(G_veins,areole_stats);
-% [G_polygons] = fnc_area_graph(G_veins,polygon_stats);
-% % collect summary statistics into a results array
-% step = step+1;
-% disp(['Step ' num2str(step) ': Summary statistics'])
-% total_area = sum(bw_mask(:));
-% polygon_area = sum(G_polygons.Nodes.Area);
-% veins = fnc_summary_veins(G_veins,total_area,polygon_area,micron_per_pixel);
-% areoles = fnc_summary_areoles(G_areoles,polygon_area,micron_per_pixel,FullMetrics);
-% polygons = fnc_summary_polygons(G_polygons,micron_per_pixel,FullMetrics);
-% results = [veins areoles polygons];
-% %% add in results for the ROC analysis (if present)
-% if exist('PR','var')
-%     results.PR_threshold = PR.evaluation{'cnn_sk','F1_threshold'};
-%     results.PR_Precision = PR.results.cnn.Precision(PR.evaluation{'cnn_sk','F1_idx'});
-%     results.PR_Recall = PR.results.cnn.Recall(PR.evaluation{'cnn_sk','F1_idx'});
-%     results.PR_F = PR.evaluation{'cnn_sk','F1'};
-%     results.PR_FBeta2 = PR.evaluation{'cnn_sk','FBeta2'};
-% end
-% %% add in file information
-% results.File = FolderName;
-% results.TimeStamp = datetime('now','TimeZone','local','Format','d-MMM-y HH:mm:ss Z');
-% results.MicronPerPixel = micron_per_pixel;
-% results.DownSample = DownSample;
-% % reorder the table to get the file info first
-% results = results(:, [end-3:end 1:end-4]);
-% %% save the graphs
-% step = step+1;
-% disp(['Step ' num2str(step) ': Saving graphs data'])
-% % save the results
-% save([dir_out_data FolderName '_Graphs.mat'],'G_veins','G_areoles','G_polygons','results')
-% %% set up the results figure
-% if ShowFigs == 1
-%     warning off images:initSize:adjustingMag
-%     warning off MATLAB:LargeImage
-%     images = {im_polygons_rgb,im_areoles_rgb,im_cnn,[],[],[]};
-%     graphs = {'none','none','Width','none','none','none'};
-%     titles = {'polygons','areoles','dual graph','none','none','none'};
-%     display_figure(images,graphs,titles,G_polygons,E_width,[1:3],'Polygons',ExportFigs);
-% end
-% % set up the figure for paper
-% if ShowFigs == 1
-%     warning off images:initSize:adjustingMag
-%     warning off MATLAB:LargeImage
-%     images = {im,im_cnn,imdilate(single(cat(3,skLoop,skTree,skLoop)), ones(3)),coded,im_areoles_rgb,im_cnn};
-%     graphs = {'none','none','none','none','none','Width'};
-%     titles = {'original','CNN','Skeleton','width','areoles','dual graph'};
-%     display_figure(images,graphs,titles,G_polygons,E_width,[1:6],'Figure',ExportFigs);
-% end
+function results = MDFLeafVeinAnalysis_v5(FolderName,micron_per_pixel,DownSample,ShowFigs,ExportFigs,FullMetrics)
+%% set up directories
+dir_out_images = ['..' filesep 'summary' filesep 'images' filesep];
+dir_out_width = ['..' filesep 'summary' filesep 'width' filesep];
+dir_out_data = ['..' filesep 'summary' filesep 'data' filesep];
+dir_out_HLD = ['..' filesep 'summary' filesep 'HLD' filesep];
+dir_out_PR_results = ['..' filesep 'summary' filesep 'PR' filesep 'results' filesep];
+dir_out_PR_images = ['..' filesep 'summary' filesep 'PR' filesep 'images' filesep];
+dir_out_PR_graphs = ['..' filesep 'summary' filesep 'PR' filesep 'graphs' filesep];
+dir_out_PR_fig = ['..' filesep 'summary' filesep 'PR' filesep 'fig' filesep];
+%% set up parameters
+micron_per_pixel = micron_per_pixel.*DownSample;
+sk_width = 3;
+E_width = 2;
+cmap = jet(256);
+cmap(1,:) = 0;
+step = 0;
+warning off
+%% Load in the images
+step = step+1;
+disp(['Step ' num2str(step) ': Processing ' FolderName])
+[im,im_cnn,bw_mask,bw_vein,bw_roi,bw_GT] = fnc_load_CNN_images(FolderName,DownSample);
+%% test the performance against the internal ground truth
+if any(bw_GT(:))
+    step = step+1;
+    disp(['Step ' num2str(step) ': Precision-Recall analysis'])
+    fout = [dir_out_PR_fig FolderName];
+    PR = fnc_precision_recall(im,im_cnn,bw_mask,bw_vein,bw_roi,bw_GT,DownSample,fout);
+    if ShowFigs == 1
+        % display the PR curves for the full-width binary image and the
+        % skeleton
+        display_PR(PR, FolderName);
+        display_sk_PR(PR, FolderName);
+    end
+    if ExportFigs == 1
+        step = step+1;
+        disp(['Step ' num2str(step) ': Saving PR data'])
+        % save the results
+        save([dir_out_PR_results FolderName '_PR.mat'],'PR')
+        % save the color-coded full-width PR image
+        fout = [dir_out_PR_images FolderName '_PR.png'];
+        imwrite(PR.images.cnn(:,:,:,PR.evaluation{'cnn','F1_idx'}),fout,'png')
+        % save the color-coded PR skeleton image
+        fout = [dir_out_PR_images FolderName '_sk_PR.png'];
+        imwrite(PR.images.cnn_sk(:,:,:,PR.evaluation{'cnn_sk','F1_idx'}),fout,'png')
+        % save the full-width PR curve
+        hfig1 = display_PR(PR, FolderName);
+        saveas(hfig1,[dir_out_PR_graphs FolderName '_PRC.png'])
+        delete(hfig1);
+        % save the PR skeleton curve
+        hfig2 = display_sk_PR(PR, FolderName);
+        saveas(hfig2,[dir_out_PR_graphs FolderName '_sk_PRC.png'])
+        delete(hfig2);
+    end
+else
+    PR = [];
+end
+%% get the skeleton
+step = step+1;
+disp(['Step ' num2str(step) ': Skeleton extraction'])
+if exist('PR','var')
+    % use the threshold value determined from the PR analysis
+    [bw_cnn, sk, skLoop, skTree] = fnc_skeleton(im_cnn,bw_vein,PR.evaluation{'cnn','F1_threshold'});
+else
+    % use a standard threshold
+    [bw_cnn, sk, skLoop, skTree] = fnc_skeleton(im_cnn,bw_vein,0.45);
+end
+%% calculate the width from the distance transform of the binarized cnn image
+step = step+1;
+disp(['Step ' num2str(step) ': Calculating width from distance transform'])
+[im_distance, ~] = bwdist(~bw_cnn,'Euclidean');
+% extract the initial width along the skeleton from the distance transform
+W_pixels = zeros(size(im_distance),'single');
+W_pixels(sk) = single(im_distance(sk).*2);
+% % % %% calculate the width using granulometry
+% % % step = step+1;
+% % % disp(['Step ' num2str(step) ': Calculating width using granulometry'])
+% % % %im_width = fnc_granulometry(imcomplement(mat2gray(im)),DownSample);
+% % % im_width = fnc_granulometry(im_cnn,DownSample);
+% % % W_pixels = zeros(size(im_width),'single');
+% % % W_pixels(sk) = single(im_width(sk).*2);
+%% set up the segmentation figure
+if ShowFigs == 1
+    warning off images:initSize:adjustingMag
+    warning off MATLAB:LargeImage
+    images = {im,im_cnn,bw_mask,imdilate(single(cat(3,skLoop,skTree,skLoop)), ones(3)),im_distance,imdilate(W_pixels, ones(3))};
+    graphs = {'none','none','none','none','none','none'};
+    titles = {'original','CNN','Mask','Skeleton','Distance','Width (pixels)'};
+    display_figure(images,graphs,titles,[],E_width,[1:6],'Segmentation',ExportFigs);
+end
+
+%% extract network using the thinned skeleton
+step = step+1;
+disp(['Step ' num2str(step) ': Extracting the network'])
+% collect a cell array of connected edge pixels
+[edgelist, edgeim] = edgelink(sk);
+%% find any self loops and split them
+step = step+1;
+disp(['Step ' num2str(step) ': Resolving self loops'])
+[edgelist, edgeim] = fnc_resolve_self_loops(edgelist,edgeim);
+%% resolve duplicate edges by splitting one edge into two
+step = step+1;
+disp(['Step ' num2str(step) ': Resolving duplicates'])
+[edgelist, edgeim] = fnc_resolve_duplicates(edgelist,edgeim);
+%% construct the weighted graph
+step = step+1;
+disp(['Step ' num2str(step) ': Weighted graph'])
+[G_veins,edgelist] = fnc_weighted_graph(edgelist,W_pixels,skLoop,skTree);
+%% Refine the width
+step = step+1;
+disp(['Step ' num2str(step) ': Refining width'])
+[G_veins,edgelist_center] = fnc_refine_width(G_veins,edgelist,im,im_cnn,W_pixels);
+%% calculate a pixel skeleton for the center weighted edges
+step = step+1;
+disp(['Step ' num2str(step) ': Colour-coded skeleton'])
+[CW_pixels,im_width,coded] = fnc_coded_skeleton(im,sk,bw_mask,G_veins,edgelist,edgelist_center,sk_width,cmap);
+%% display the weighted network
+step = step+1;
+disp(['Step ' num2str(step) ': Image display'])
+if ShowFigs == 1
+    warning off images:initSize:adjustingMag
+    warning off MATLAB:LargeImage
+    if exist('PR','var')
+        images = {im_cnn,im_cnn,CW_pixels,coded,PR.images.cnn(:,:,:,PR.evaluation{'cnn','F1_idx'}),PR.images.cnn_sk(:,:,:,PR.evaluation{'cnn_sk','F1_idx'})};
+    else
+        images = {im_cnn,im_cnn,CW_pixels,coded,[],[]};
+    end
+    graphs = {'Width_initial','Width','none','none','none','none'};
+    titles = {'Original width','center-weighted width','width (pixels)','coded','precision-recall full width','precision-recall skeleton'};
+    display_figure(images,graphs,titles,G_veins,E_width,[1:4],'Width',ExportFigs);
+end
+if ExportFigs == 1
+    step = step+1;
+    disp(['Step ' num2str(step) ': Saving width images'])
+    [nY,nX,nC] = size(coded);
+    % save the color-coded width image
+    fout = [dir_out_images FolderName '_width.png'];
+    imwrite(coded,fout,'png','Xresolution',nX,'Yresolution',nY)
+    % save the greyscale width array as a matlab file. Note outside the
+    % masked area is now coded as -1
+    save([dir_out_width FolderName '_Width_array'],'im_width')
+%     % save the greyscale width image as a uint8 image
+%     fout = [dir_out_width FolderName '_width_gray.png'];
+%     imwrite(uint8(im_width),fout,'png','Xresolution',nX,'Yresolution',nY)
+end
+% find the areoles
+step = step+1;
+disp(['Step ' num2str(step) ': polygon analysis'])
+% find the polygon and areole areas
+[G_veins, sk_polygon, bw_polygons, bw_areoles, total_area_mask, polygon_LM] = fnc_polygon_find(G_veins,bw_cnn,sk,skLoop,bw_mask);
+ [areole_stats,polygon_stats] = fnc_polygon_analysis(bw_polygons,bw_areoles, polygon_LM,FullMetrics);
+% construct color-coded images based on log area
+im_polygons_rgb = fnc_polygon_image(polygon_stats, sk_polygon, total_area_mask);
+im_areoles_rgb = fnc_polygon_image(areole_stats, sk_polygon, total_area_mask);
+% convert to an areole graph and a polygon graph
+step = step+1;
+disp(['Step ' num2str(step) ': Dual graph'])
+[G_areoles] = fnc_area_graph(G_veins,areole_stats);
+[G_polygons] = fnc_area_graph(G_veins,polygon_stats);
+% collect summary statistics into a results array
+step = step+1;
+disp(['Step ' num2str(step) ': Summary statistics'])
+total_area = sum(bw_mask(:));
+polygon_area = sum(G_polygons.Nodes.Area);
+veins = fnc_summary_veins(G_veins,total_area,polygon_area,micron_per_pixel);
+areoles = fnc_summary_areoles(G_areoles,polygon_area,micron_per_pixel,FullMetrics);
+polygons = fnc_summary_polygons(G_polygons,micron_per_pixel,FullMetrics);
+results = [veins areoles polygons];
+%% add in results for the ROC analysis (if present)
+if exist('PR','var')
+    results.PR_threshold = PR.evaluation{'cnn_sk','F1_threshold'};
+    results.PR_Precision = PR.results.cnn.Precision(PR.evaluation{'cnn_sk','F1_idx'});
+    results.PR_Recall = PR.results.cnn.Recall(PR.evaluation{'cnn_sk','F1_idx'});
+    results.PR_F = PR.evaluation{'cnn_sk','F1'};
+    results.PR_FBeta2 = PR.evaluation{'cnn_sk','FBeta2'};
+end
+%% add in file information
+results.File = FolderName;
+results.TimeStamp = datetime('now','TimeZone','local','Format','d-MMM-y HH:mm:ss Z');
+results.MicronPerPixel = micron_per_pixel;
+results.DownSample = DownSample;
+% reorder the table to get the file info first
+results = results(:, [end-3:end 1:end-4]);
+%% save the graphs
+step = step+1;
+disp(['Step ' num2str(step) ': Saving graphs data'])
+% save the results
+save([dir_out_data FolderName '_Graphs.mat'],'G_veins','G_areoles','G_polygons','results')
+%% set up the results figure
+if ShowFigs == 1
+    warning off images:initSize:adjustingMag
+    warning off MATLAB:LargeImage
+    images = {im_polygons_rgb,im_areoles_rgb,im_cnn,[],[],[]};
+    graphs = {'none','none','Width','none','none','none'};
+    titles = {'polygons','areoles','dual graph','none','none','none'};
+    display_figure(images,graphs,titles,G_polygons,E_width,[1:3],'Polygons',ExportFigs);
+end
+% set up the figure for paper
+if ShowFigs == 1
+    warning off images:initSize:adjustingMag
+    warning off MATLAB:LargeImage
+    images = {im,im_cnn,imdilate(single(cat(3,skLoop,skTree,skLoop)), ones(3)),coded,im_areoles_rgb,im_cnn};
+    graphs = {'none','none','none','none','none','Width'};
+    titles = {'original','CNN','Skeleton','width','areoles','dual graph'};
+    display_figure(images,graphs,titles,G_polygons,E_width,[1:6],'Figure',ExportFigs);
+end
 
 % Hierarchical loop decomposition
-% step = step+1;
-% disp(['Step ' num2str(step) ': Hierarchical loop decomposition'])
-% [G_HLD, parent] = fnc_HLD(G_veins, G_polygons, G_areoles, polygon_stats, areole_stats, bw_polygons, bw_areoles, total_area, polygon_area, micron_per_pixel, ShowFigs,FullMetrics);
+step = step+1;
+disp(['Step ' num2str(step) ': Hierarchical loop decomposition'])
+[G_HLD, parent] = fnc_HLD(G_veins, G_polygons, G_areoles, polygon_stats, areole_stats, bw_polygons, bw_areoles, total_area, polygon_area, micron_per_pixel, ShowFigs,FullMetrics);
 % HLD display
 if ShowFigs == 1
-    display_HLD(G_polygons,im_cnn,HLD_levels,im_HLD_order,G_HLD,parent);
+    display_HLD(G_polygons,im_cnn,G_HLD,parent);
 end
-% if ExportFigs == 1
-%     hfig = display_HLD(G_polygons,im_cnn,HLD_levels,im_HLD_order,G_HLD,parent);
-%     saveas(hfig,[dir_out_HLD FolderName '_HLD.png'])
-%     delete(hfig);
-%     save([dir_out_HLD FolderName '_HLD_results.mat'],'G_HLD','parent','HLD_full_metrics','HLD_slice_metrics')
-% end
-% end
+if ExportFigs == 1
+    hfig = display_HLD(G_polygons,im_cnn,G_HLD,parent);
+    saveas(hfig,[dir_out_HLD FolderName '_HLD.png'])
+    delete(hfig);
+    save([dir_out_HLD FolderName '_HLD_results.mat'],'G_HLD','parent')
+end
+ end
 
 function [im,im_cnn,bw_mask,bw_vein,bw_roi,bw_GT] = fnc_load_CNN_images(FolderName,DownSample)
 % get the contents of the directory
@@ -1967,23 +1967,37 @@ idx = find(CC==1);
 G_polygons = subgraph(G_polygons,idx);
 % extract the same component from the stats arrays
 polygon_stats = polygon_stats(idx);
+% set the weights in the vein graph to length
+G_veins.Edges.Weight = G_veins.Edges.Length;
+% Extract the equivalent vein graph to match the polygon graph
+Vidx = ismember(G_veins.Edges.Ai,idx) | ismember(G_veins.Edges.Aj,idx);
+G_veins = rmedge(G_veins,find(~Vidx));
+        % only keep veins that are still connected to the largest component
+        CC = conncomp(G_veins);
+        [N,~] = histcounts(CC,max(CC));
+        [~,idx] = max(N);
+        G_veins = subgraph(G_veins,find(CC==idx));
+% calculate the initial length and MST ratio 
+L = sum(G_veins.Edges.Length);
+MST = minspantree(G_veins,'method','sparse');
+MSTL = sum(MST.Edges.Weight)/L;
 % % % areole_stats = areole_stats(idx);
 % % % % get the ID of the nodes remaining
 % % % ID = G_polygons.Nodes.ID;
-% % % if ShowFigs == 1
-% % %     % plot the adjacency graph for the full network
-% % %     hfig = figure;
-% % %     hfig.Units = 'normalized';
-% % %     hfig.Position = [0 0 0.8 1];
-% % %     hfig.Color = 'w';
-% % %     gplot(adjacency(G_veins),[G_veins.Nodes.node_X_pix,G_veins.Nodes.node_Y_pix],'k:')
-% % %     axis off
-% % %     axis ij
-% % %     axis image
-% % %     axis square
-% % %     box on
-% % %     hold on
-% % % end
+% if ShowFigs == 1
+%     % plot the adjacency graph for the full network
+%     hfig = figure;
+%     hfig.Units = 'normalized';
+%     hfig.Position = [0 0 0.8 1];
+%     hfig.Color = 'w';
+%     gplot(adjacency(G_veins),[G_veins.Nodes.node_X_pix,G_veins.Nodes.node_Y_pix],'k:')
+%     axis off
+%     axis ij
+%     axis image
+%     axis square
+%     box on
+%     hold on
+% end
 % % % % Keep veins from the vein graph that form part of the polygon_graph. These
 % % % % will be the boundary edges and any internal tree-like parts of the
 % % % % network, but will exclude edges from incomplete polygons on the boundary
@@ -2006,6 +2020,8 @@ node_Degree = [ones(nnP,1,'single'); zeros(nnP-1,1,'single')];
 node_Asymmetry = zeros(nnP*2-1,1,'single');
 node_HS = [ones(nnP,1,'single'); zeros(nnP-1,1,'single')];
 subtree_Asymmetry = zeros((2*nnP)-1,1,'single');
+VTotLen = [repmat(L,nnP,1); zeros(nnP-1,1,'single')];
+MSTRatio = [repmat(MSTL,nnP,1); zeros(nnP-1,1,'single')];
 %area_ = zeros((2*nnP)-1,1,'single');
 % area_Asymmetry = zeros((2*nnP)-1,1,'single');
 % redimension the stat arrays to accomodate all the fused nodes
@@ -2124,30 +2140,36 @@ for iE = 1:neP
         % stats structures
         PCC.NumObjects = 1;
         PCC.PixelIdxList  = P_PIL(Nk);
-%         LM = labelmatrix(PCC);
-P_stats(Nk,:) = regionprops('table',PCC,'Area','Centroid','Perimeter','MajorAxisLength','MinorAxisLength','Eccentricity','Orientation');
-%         [A_stats,P_stats] = fnc_polygon_analysis(bw_polygons,bw_areoles, LM, FullMetrics);
-%         A_stats.ID = Nk;
-%         HLD_stats.ID = Nk;
-%         areole_stats(Nk) = A_stats;
-%         P_stats(Nk,:) = HLD_stats;
-% % %         % add the nodes that have fused to the exclude list
-% % %         exclude(Nf,:) = [Ni Nj];
-% % %         % find edges in the vein graph up to and including this edge width
-% % %         Eidx = G_veins.Edges.Width <= width_threshold(Nk,1);
-% % %         % remove these edges from the graph
-% % %         G_veins = rmedge(G_veins,find(Eidx));
-% % %         % only keep veins that are still connected to the largest component
-% % %         CC = conncomp(G_veins);
-% % %         [N,~] = histcounts(CC,max(CC));
-% % %         [~,idx] = max(N);
-% % %         G_veins = subgraph(G_veins,find(CC==idx));
-% % %         % replace any occurrences of the nodes that have fused with
-% % %         % the new node ID
-% % %         idx = G_veins.Edges.Ai == Ni | G_veins.Edges.Ai == Nj;
-% % %         G_veins.Edges.Ai(idx) = Nk;
-% % %         idx = G_veins.Edges.Aj == Ni | G_veins.Edges.Aj == Nj;
-% % %         G_veins.Edges.Aj(idx) = Nk;
+        %         LM = labelmatrix(PCC);
+        P_stats(Nk,:) = regionprops('table',PCC,'Area','Centroid','Perimeter','MajorAxisLength','MinorAxisLength','Eccentricity','Orientation');
+        %         [A_stats,P_stats] = fnc_polygon_analysis(bw_polygons,bw_areoles, LM, FullMetrics);
+        %         A_stats.ID = Nk;
+        %         HLD_stats.ID = Nk;
+        %         areole_stats(Nk) = A_stats;
+        %         P_stats(Nk,:) = HLD_stats;
+        % % %         % add the nodes that have fused to the exclude list
+        % % %         exclude(Nf,:) = [Ni Nj];
+        % % %         % find edges in the vein graph up to and including this edge width
+        
+        Eidx = G_veins.Edges.Width <= width_threshold(Nk,1);
+        % remove these edges from the graph
+        G_veins = rmedge(G_veins,find(Eidx));
+        % only keep veins that are still connected to the largest component
+        CC = conncomp(G_veins);
+        [N,~] = histcounts(CC,max(CC));
+        [~,idx] = max(N);
+        G_veins = subgraph(G_veins,find(CC==idx));
+        % replace any occurrences of the nodes that have fused with
+        % the new node ID
+        idx = G_veins.Edges.Ai == Ni | G_veins.Edges.Ai == Nj;
+        G_veins.Edges.Ai(idx) = Nk;
+        idx = G_veins.Edges.Aj == Ni | G_veins.Edges.Aj == Nj;
+        G_veins.Edges.Aj(idx) = Nk;
+% calculate the minimum spanning tree using Kruskal's algorithm
+MST = minspantree(G_veins,'method','sparse');
+VTotLen(Nk,1) = sum(G_veins.Edges.Weight);
+MSTRatio(Nk,1) = sum(MST.Edges.Weight)/VTotLen(Nk,1);
+        
 %         % check whether the current edge is above the threshold for
 %         % the next edge width interval
 %         switch HLD_level_criteria
@@ -2218,9 +2240,9 @@ parent(end+1) = Nk+1;
 parent = double(fliplr(max(parent(:)) - parent));
 % assemble the HLD graph object
 NodeTable = table((1:(2*nnP)-1)', width_threshold, node_Area, node_Degree, ...
-    node_Asymmetry, node_HS, subtree_Asymmetry, [P_stats.Perimeter], [P_stats.MajorAxisLength],[P_stats.MinorAxisLength],[P_stats.Eccentricity], [P_stats.Orientation], ...
+    node_Asymmetry, node_HS, subtree_Asymmetry, [P_stats.Perimeter], [P_stats.MajorAxisLength],[P_stats.MinorAxisLength],[P_stats.Eccentricity], [P_stats.Orientation], VTotLen, MSTRatio, ...
     'VariableNames',{'node_ID', 'width_threshold', 'node_Area', 'node_Degree', ...
-    'node_Asymmetry', 'node_HS', 'subtree_Asymmetry', 'Perimeter','MajorAxisLength', 'MinorAxisLength', 'Eccentricity','Orientation'});
+    'node_Asymmetry', 'node_HS', 'subtree_Asymmetry', 'Perimeter','MajorAxisLength', 'MinorAxisLength', 'Eccentricity','Orientation','VTotLen','MSTRatio'});
 idx = NodeTable.node_Area == 0;
 NodeTable(idx,:) = [];
 EdgeTable = table(EndNodes, ...
@@ -2631,7 +2653,7 @@ if ExportFigs
 end
 end
 
-function hfig = display_HLD(G_polygons,im_cnn,HLD_levels,im_HLD_order,G_HLD,parent)
+function hfig = display_HLD(G_polygons,im_cnn,G_HLD,parent)
 hfig = figure;
 hfig.Units = 'normalized';
 hfig.Position = [0 0 0.6 1];
@@ -2641,10 +2663,11 @@ ax(1) = subplot(3,3,1);
     axes(ax(1))
     pos = ax(1).OuterPosition;
     ax(1).Position = pos;
-sz = size(im_cnn);
-r = [round(sz(1)./3):round(sz(1).*2/3)];
-c = [round(sz(2)./3):round(sz(2).*2/3)];
-imshow(im_cnn(r,c),[])
+% sz = size(im_cnn);
+% r = [round(sz(1)./3):round(sz(1).*2/3)];
+% c = [round(sz(2)./3):round(sz(2).*2/3)];
+% imshow(im_cnn(r,c),[])
+imshow(im_cnn,[])
 % get edge width
 E = G_polygons.Edges.Width;
 E(isinf(E)) = nan;
@@ -2701,11 +2724,24 @@ ylabel('bifurcation ratio')
 box on
 % display the tree width histogram
 subplot(3,3,7)
-[TR,D] = shortestpathtree(G_HLD,18793,'OutputForm','cell');
+[TR,D] = shortestpathtree(G_HLD,numnodes(G_HLD),'OutputForm','cell');
 histogram(G_HLD.Nodes.width_threshold([TR{:}]),100)
+xlabel('width of edge removed')
+ylabel('freq. of paths traversing edge')
+box on
 % display the eccentricity against width threshold
 subplot(3,3,8)
-plot(G_HLD.Nodes.width_threshold([TR{:}]),G_HLD.Nodes.Eccentricity([TR{:}]),'.')
+% plot(G_HLD.Nodes.width_threshold([TR{:}]),G_HLD.Nodes.Eccentricity([TR{:}]),'.')
+plot(G_HLD.Nodes.Eccentricity,'.')
+xlabel('edge removed')
+ylabel('areole eccentricity')
+box on
+subplot(3,3,9)
+plot(G_HLD.Nodes.MSTRatio,'.')
+xlabel('edge removed')
+ylabel('MST Ratio')
+box on
+
 % % display the cumulative width pdf
 % W = sort(G_polygons.Edges{:,'Width'});
 % subplot(3,3,7)
