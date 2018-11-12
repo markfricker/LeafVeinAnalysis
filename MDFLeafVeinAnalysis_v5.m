@@ -11,7 +11,7 @@ dir_out_PR_fig = ['..' filesep 'summary' filesep 'PR' filesep 'fig' filesep];
 %% set up parameters
 micron_per_pixel = micron_per_pixel.*DownSample;
 sk_width = 3;
-E_width = 2;
+E_width = 1;
 cmap = jet(256);
 cmap(1,:) = 0;
 step = 0;
@@ -20,12 +20,13 @@ warning off
 step = step+1;
 disp(['Step ' num2str(step) ': Processing ' FolderName])
 [im,im_cnn,bw_mask,bw_vein,bw_roi,bw_GT] = fnc_load_CNN_images(FolderName,DownSample);
-%% test the performance against the internal ground truth
+% test the performance against the internal ground truth
 if any(bw_GT(:))
     step = step+1;
     disp(['Step ' num2str(step) ': Precision-Recall analysis'])
+    dirout = dir_out_PR_images;
     fout = [dir_out_PR_fig FolderName];
-    PR = fnc_precision_recall(im,im_cnn,bw_mask,bw_vein,bw_roi,bw_GT,DownSample,fout);
+    PR = fnc_precision_recall(im,im_cnn,bw_mask,bw_vein,bw_roi,bw_GT,DownSample,dirout,fout);
     if ShowFigs == 1
         % display the PR curves for the full-width binary image and the
         % skeleton
@@ -79,15 +80,15 @@ W_pixels(sk) = single(im_distance(sk).*2);
 % % % im_width = fnc_granulometry(im_cnn,DownSample);
 % % % W_pixels = zeros(size(im_width),'single');
 % % % W_pixels(sk) = single(im_width(sk).*2);
-%% set up the segmentation figure
-if ShowFigs == 1
-    warning off images:initSize:adjustingMag
-    warning off MATLAB:LargeImage
-    images = {im,im_cnn,bw_mask,imdilate(single(cat(3,skLoop,skTree,skLoop)), ones(3)),im_distance,imdilate(W_pixels, ones(3))};
-    graphs = {'none','none','none','none','none','none'};
-    titles = {'original','CNN','Mask','Skeleton','Distance','Width (pixels)'};
-    display_figure(images,graphs,titles,[],E_width,[1:6],'Segmentation',ExportFigs);
-end
+% % % %% set up the segmentation figure
+% % % if ShowFigs == 1
+% % %     warning off images:initSize:adjustingMag
+% % %     warning off MATLAB:LargeImage
+% % %     images = {im,im_cnn,bw_mask,imdilate(single(cat(3,skLoop,skTree,skLoop)), ones(3)),im_distance,imdilate(W_pixels, ones(3))};
+% % %     graphs = {'none','none','none','none','none','none'};
+% % %     titles = {'original','CNN','Mask','Skeleton','Distance','Width (pixels)'};
+% % %     display_figure(images,graphs,titles,[],E_width,[1:6],[dir_out_images FolderName 'Segmentation'],ExportFigs);
+% % % end
 
 %% extract network using the thinned skeleton
 step = step+1;
@@ -117,18 +118,18 @@ disp(['Step ' num2str(step) ': Colour-coded skeleton'])
 %% display the weighted network
 step = step+1;
 disp(['Step ' num2str(step) ': Image display'])
-if ShowFigs == 1
-    warning off images:initSize:adjustingMag
-    warning off MATLAB:LargeImage
-    if exist('PR','var')
-        images = {im_cnn,im_cnn,CW_pixels,coded,PR.images.cnn(:,:,:,PR.evaluation{'cnn','F1_idx'}),PR.images.cnn_sk(:,:,:,PR.evaluation{'cnn_sk','F1_idx'})};
-    else
-        images = {im_cnn,im_cnn,CW_pixels,coded,[],[]};
-    end
-    graphs = {'Width_initial','Width','none','none','none','none'};
-    titles = {'Original width','center-weighted width','width (pixels)','coded','precision-recall full width','precision-recall skeleton'};
-    display_figure(images,graphs,titles,G_veins,E_width,[1:4],'Width',ExportFigs);
-end
+% % % if ShowFigs == 1
+% % %     warning off images:initSize:adjustingMag
+% % %     warning off MATLAB:LargeImage
+% % %     if exist('PR','var')
+% % %         images = {im_cnn,im_cnn,CW_pixels,coded,PR.images.cnn(:,:,:,PR.evaluation{'cnn','F1_idx'}),PR.images.cnn_sk(:,:,:,PR.evaluation{'cnn_sk','F1_idx'})};
+% % %     else
+% % %         images = {im_cnn,im_cnn,CW_pixels,coded,[],[]};
+% % %     end
+% % %     graphs = {'Width_initial','Width','none','none','none','none'};
+% % %     titles = {'Original width','center-weighted width','width (pixels)','coded','precision-recall full width','precision-recall skeleton'};
+% % %     display_figure(images,graphs,titles,G_veins,E_width,[1:4],[dir_out_images FolderName 'Width'],ExportFigs);
+% % % end
 if ExportFigs == 1
     step = step+1;
     disp(['Step ' num2str(step) ': Saving width images'])
@@ -187,28 +188,28 @@ disp(['Step ' num2str(step) ': Saving graphs data'])
 % save the results
 save([dir_out_data FolderName '_Graphs.mat'],'G_veins','G_areoles','G_polygons','results')
 %% set up the results figure
-if ShowFigs == 1
-    warning off images:initSize:adjustingMag
-    warning off MATLAB:LargeImage
-    images = {im_polygons_rgb,im_areoles_rgb,im_cnn,[],[],[]};
-    graphs = {'none','none','Width','none','none','none'};
-    titles = {'polygons','areoles','dual graph','none','none','none'};
-    display_figure(images,graphs,titles,G_polygons,E_width,[1:3],'Polygons',ExportFigs);
-end
+% % % if ShowFigs == 1
+% % %     warning off images:initSize:adjustingMag
+% % %     warning off MATLAB:LargeImage
+% % %     images = {im_polygons_rgb,im_areoles_rgb,im_cnn,[],[],[]};
+% % %     graphs = {'none','none','Width','none','none','none'};
+% % %     titles = {'polygons','areoles','dual graph','none','none','none'};
+% % %     display_figure(images,graphs,titles,G_polygons,E_width,[1:3],[dir_out_images FolderName '_Polygons'],ExportFigs);
+% % % end
 % set up the figure for paper
 if ShowFigs == 1
     warning off images:initSize:adjustingMag
     warning off MATLAB:LargeImage
-    images = {im,im_cnn,imdilate(single(cat(3,skLoop,skTree,skLoop)), ones(3)),coded,im_areoles_rgb,im_cnn};
+    images = {im,max(im_cnn(:))-im_cnn,imdilate(single(cat(3,skLoop,skTree,skLoop)), ones(5)),coded,im_areoles_rgb,max(im_cnn(:))-im_cnn};
     graphs = {'none','none','none','none','none','Width'};
     titles = {'original','CNN','Skeleton','width','areoles','dual graph'};
-    display_figure(images,graphs,titles,G_polygons,E_width,[1:6],'Figure',ExportFigs);
+    display_figure(images,graphs,titles,G_polygons,E_width,[1:6],[dir_out_images FolderName '_Figure'],ExportFigs);
 end
 
 % Hierarchical loop decomposition
 step = step+1;
 disp(['Step ' num2str(step) ': Hierarchical loop decomposition'])
-[G_HLD, parent] = fnc_HLD(G_veins, G_polygons, G_areoles, polygon_stats, areole_stats, bw_polygons, bw_areoles, total_area, polygon_area, micron_per_pixel, ShowFigs,FullMetrics);
+[G_HLD, parent] = fnc_HLD(G_veins, G_polygons, G_areoles, polygon_stats, areole_stats, polygon_LM, bw_polygons, total_area, polygon_area, micron_per_pixel, ShowFigs,FullMetrics);
 % HLD display
 if ShowFigs == 1
     display_HLD(G_polygons,im_cnn,G_HLD,parent);
@@ -219,7 +220,7 @@ if ExportFigs == 1
     delete(hfig);
     save([dir_out_HLD FolderName '_HLD_results.mat'],'G_HLD','parent')
 end
- end
+end
 
 function [im,im_cnn,bw_mask,bw_vein,bw_roi,bw_GT] = fnc_load_CNN_images(FolderName,DownSample)
 % get the contents of the directory
@@ -300,7 +301,7 @@ bw_mask = bw_mask & bw_cnn_mask;
 im_cnn(~bw_mask) = 0;
 end
 
-function PR = fnc_precision_recall(im,im_cnn,bw_mask,bw_vein,bw_roi,bw_GT,DownSample,fout)
+function PR = fnc_precision_recall(im,im_cnn,bw_mask,bw_vein,bw_roi,bw_GT,DownSample,dirout,fout)
 % subsample images for comparison with ground truth
 stats = regionprops(bw_roi,'BoundingBox');
 BB = round(stats.BoundingBox);
@@ -368,6 +369,7 @@ tolerance = 3;
 PR = fnc_PRC_evaluation(PR,T);
 % display the figure
 hfig = figure;
+% set up the axes to fill the figure
 for ia = 1:18
     ax(ia) = subplot(3,6,ia);
     axes(ax(ia))
@@ -379,63 +381,62 @@ end
 hfig.Units = 'normalized';
 hfig.Position = [0 0 0.8 1];
 hfig.Color = 'w';
-
+% select the order of methods to display
 methods = {'cnn';'vesselness';'featuretype';'bowlerhat';'midgrey'};
-% subplot(3,6,1)
+% choose the orientation to be portrait
 axes(ax(1))
-if size(roi_im,1) > size(roi_im,2)
+if size(roi_im,1) < size(roi_im,2)
     rotate_angle = 90;
 else
     rotate_angle = 0;
 end
-
-imshow(imrotate(roi_im,rotate_angle),[])
+% show the original image in inverse greyscale
+im = imrotate(roi_im,rotate_angle);
+imshow(max(im(:))-im,[])
 title('original')
 axis off
-export_fig('roi_im','-png',ax(1))
+export_fig([dirout 'roi_im'],'-png',ax(1))
 for iP = 1:4
-    % subplot(3,6,iP+1)
     axes(ax(iP+1))
-    imshow(imrotate(eval(['roi_' methods{iP}]),rotate_angle),[])
+    im = imrotate(eval(['roi_' methods{iP}]),rotate_angle);
+    imshow(max(im(:))-im,[])
     title(methods{iP})
     axis off
-    export_fig(methods{iP},'-png',ax(iP+1))
+    export_fig([dirout methods{iP}],'-png',ax(iP+1))
 end
-% subplot(3,6,6)
+% show the midgrey images
 axes(ax(6))
-imshow(imrotate(bw_midgrey(:,:,PR.evaluation{'midgrey','F1_idx'}),rotate_angle),[])
-title('midgrey')
+im = imrotate(bw_midgrey(:,:,PR.evaluation{'midgrey','F1_idx'}),rotate_angle);
+imshow(max(im(:))-im,[])
+title('Mid Grey')
 axis off
-export_fig('midgrey','-png',ax(6))
-
-% subplot(3,6,7)
+export_fig([dirout 'midgrey'],'-png',ax(6))
+% display the full-width ground-truth
 axes(ax(7))
-imshow(imrotate(roi_GT,rotate_angle),[])
-%title('ground truth')
+im = imrotate(roi_GT,rotate_angle);
+imshow(~im,[])
+% display the full width PR images
 axis off
-export_fig('GT','-png',ax(7))
+export_fig([dirout 'GT'],'-png',ax(7))
 for iP = 1:5
-    % subplot(3,6,iP+7)
     axes(ax(iP+7))
     imshow(imrotate(PR.images.cnn(:,:,:,PR.evaluation{methods{iP},'F1_idx'}),rotate_angle),[])
-    %title(round(PR.evaluation{methods{iP},'F1'},2,'significant'))
     axis off
-    export_fig([methods{iP} '_2'],'-png',ax(iP+7))
+    export_fig([dirout methods{iP} '_2'],'-png',ax(iP+7))
 end
+% display the skeleton PR images
+% choose the thickness to dilate (original) or erode (complement) the skeleton to be visible
+width = 3;
 methods = {'cnn_sk';'vesselness_sk';'featuretype_sk';'bowlerhat_sk';'midgrey_sk'};
-% subplot(3,6,13)
 axes(ax(13))
-imshow(imdilate(imrotate(sk_GT,rotate_angle), ones(3)),[])
+imshow(imerode(imrotate(~sk_GT,rotate_angle), ones(width)),[])
 axis off
-export_fig(sk_GT,'-png',ax(13))
-
+export_fig([dirout 'sk_GT'],'-png',ax(13))
 for iP = 1:5
-    % subplot(3,6,iP+13)
     axes(ax(iP+13))
-    imshow(imerode(imrotate(PR.images.cnn_sk(:,:,:,PR.evaluation{methods{iP},'F1_idx'}),rotate_angle),ones(3)),[])
-    %title(round(PR.evaluation{methods{iP},'F1'},2,'significant'))
+    imshow(imerode(imrotate(PR.images.cnn_sk(:,:,:,PR.evaluation{methods{iP},'F1_idx'}),rotate_angle),ones(width)),[])
     axis off
-    export_fig(methods{iP},'-png',ax(iP+13))
+    export_fig([dirout methods{iP}],'-png',ax(iP+13))
 end
 
 for ia = 1:18
@@ -456,12 +457,11 @@ for ia = 1:18
     end
 end
 
-export_fig('all','-native','-png')
+export_fig([dirout 'all'],'-native','-png')
 linkaxes
 drawnow
-saveas(hfig,[fout '_PRall.fig'])
+% saveas(hfig,[fout '_PRall.fig'])
 delete(hfig)
-
 end
 
 function im_out = fnc_enhance_im(im_in,DownSample,method)
@@ -1949,18 +1949,24 @@ switch transform
 end
 end
 
-function [G_HLD, parent] = fnc_HLD(G_veins, G_polygons, G_areoles, polygon_stats, areole_stats, bw_polygons, bw_areoles, total_area,polygon_area,micron_per_pixel,ShowFigs,FullMetrics)
-tic
-% construct a full binary polygon CC object
+function [G_HLD, parent] = fnc_HLD(G_veins, G_polygons, G_areoles, polygon_stats, areole_stats, polygon_LM, bw_polygons, total_area,polygon_area,micron_per_pixel,ShowFigs,FullMetrics)
+% set calibration factors
+mm = micron_per_pixel./1000;
+% construct a binary polygon CC object
 PCC.Connectivity = 4;
-PCC.ImageSize = size(bw_polygons);
+PCC.ImageSize = size(polygon_LM);
 PCC.NumObjects = 1;
 PCC.PixelIdxList = {};
-% % set up a slice CC object
-% SlCC.Connectivity = 4;
-% SlCC.ImageSize = size(bw_polygons);
-% SlCC.NumObjects = 1;
-% SlCC.PixelIdxList = {};
+% find all the polygons on the boundary
+boundary = polygon_LM==0;
+boundary = bwareafilt(boundary,[200 inf]);
+boundary = imdilate(boundary,ones(3));
+% boundary = imdilate(~imclose(polygon_LM, ones(3)),ones(3));
+[r,c] = find(boundary);
+B_polygons = bwselect(bw_polygons,c,r,4);
+Bidx = unique(polygon_LM(B_polygons));
+Bidx(Bidx==0) = [];
+G_polygons.Nodes.Boundary(Bidx,1) = 1;
 % select the largest component of the polygon graph
 CC = conncomp(G_polygons);
 idx = find(CC==1);
@@ -1969,364 +1975,40 @@ G_polygons = subgraph(G_polygons,idx);
 polygon_stats = polygon_stats(idx);
 % set the weights in the vein graph to length
 G_veins.Edges.Weight = G_veins.Edges.Length;
-% Extract the equivalent vein graph to match the polygon graph
-Vidx = ismember(G_veins.Edges.Ai,idx) | ismember(G_veins.Edges.Aj,idx);
-G_veins = rmedge(G_veins,find(~Vidx));
-        % only keep veins that are still connected to the largest component
-        CC = conncomp(G_veins);
-        [N,~] = histcounts(CC,max(CC));
-        [~,idx] = max(N);
-        G_veins = subgraph(G_veins,find(CC==idx));
-% calculate the initial length and MST ratio 
-L = sum(G_veins.Edges.Length);
-MST = minspantree(G_veins,'method','sparse');
-MSTL = sum(MST.Edges.Weight)/L;
-% % % areole_stats = areole_stats(idx);
-% % % % get the ID of the nodes remaining
-% % % ID = G_polygons.Nodes.ID;
-% if ShowFigs == 1
-%     % plot the adjacency graph for the full network
-%     hfig = figure;
-%     hfig.Units = 'normalized';
-%     hfig.Position = [0 0 0.8 1];
-%     hfig.Color = 'w';
-%     gplot(adjacency(G_veins),[G_veins.Nodes.node_X_pix,G_veins.Nodes.node_Y_pix],'k:')
-%     axis off
-%     axis ij
-%     axis image
-%     axis square
-%     box on
-%     hold on
-% end
-% % % % Keep veins from the vein graph that form part of the polygon_graph. These
-% % % % will be the boundary edges and any internal tree-like parts of the
-% % % % network, but will exclude edges from incomplete polygons on the boundary
-% % % % or disconnected polygons. Edges should have Ai and/or
-% % % % Aj corresponding to a polygon node ID.
-% % % Eidx = ismember(G_veins.Edges.Ai,ID) | ismember(G_veins.Edges.Aj,ID);
-% % % G_veins = rmedge(G_veins,find(~Eidx));
-% % % if ShowFigs == 1
-% % %     % update the adjacency graph with the selected subset of veins
-% % %     gplot(adjacency(G_veins),[G_veins.Nodes.node_X_pix,G_veins.Nodes.node_Y_pix],'k-')
-% % %     drawnow
-% % % end
-% get the number of nodes and edge in the dual graph
-nnP = single(numnodes(G_polygons));
-neP = single(numedges(G_polygons));
-parent = single(zeros(1,nnP));
-width_threshold = zeros((2*nnP)-1,1,'single');
-node_Area = [G_polygons.Nodes{:,'Area'}; zeros(nnP-1,1,'single')];
-node_Degree = [ones(nnP,1,'single'); zeros(nnP-1,1,'single')];
-node_Asymmetry = zeros(nnP*2-1,1,'single');
-node_HS = [ones(nnP,1,'single'); zeros(nnP-1,1,'single')];
-subtree_Asymmetry = zeros((2*nnP)-1,1,'single');
-VTotLen = [repmat(L,nnP,1); zeros(nnP-1,1,'single')];
-MSTRatio = [repmat(MSTL,nnP,1); zeros(nnP-1,1,'single')];
-%area_ = zeros((2*nnP)-1,1,'single');
-% area_Asymmetry = zeros((2*nnP)-1,1,'single');
-% redimension the stat arrays to accomodate all the fused nodes
-areole_stats(nnP.*2-1).Area = 0;
-polygon_stats(nnP.*2-1).Area = 0;
-% % % % set the counter for the number of fusions
-% % % Nf = 1;
-% order the edges by width in the polygon graph
-[W,idx] = sort(G_polygons.Edges{:,'Width'});
-% sort the edge nodes and edge name to match the ordered widths
-nodei = G_polygons.Edges{idx,'EndNodes'}(:,1);
-nodej = G_polygons.Edges{idx,'EndNodes'}(:,2);
-% set up a list of the initial edges sorted by width
-ET = single([nodei nodej W]);
-% start the index for the new node (Nk) to follow on the number of existing
-% nodes (nnP)
-Nk = nnP;
-% % % Nt(1) = nnP;
-Ne = 0;
-% % % nLevels = 30;
-% % % HLD_level_criteria = 'width';
-% % % switch HLD_level_criteria
-% % %     case 'area'
-% % %         % set the first level for output in the HLD_movie to the nearest power of 2
-% % %         % within the number of nodes. The level will count down from this
-% % %         % number of areas until the final value is 1.
-% % %         mx = 2*(nextpow2(nnP)-1);
-% % %         criteria = single(round(sqrt(2).^(mx:-1:1)));
-% % %     case 'width'
-% % %         % set up the cumulative widths
-% % %         csW = cumsum(W);
-% % %         % use the discretize function to divide into equal number of bins
-% % %         [~,BinEdges] = discretize(csW,min(neP,nLevels+1));
-% % %         bins = BinEdges(2:end-1);
-% % %         % find the nearest edge in csW that exceeds each bin edge
-% % %         [~,criteria] = min(single(abs(csW-bins)));
-% % % end
-% % % % set up an array to hold the width criteria
-% % % HLD_levels = zeros(numel(criteria),2,'single');
-% % % nL = 1;
-% % calculate the full set of summary statistics for the initial network
-% % (excluding the separation into tree and loops)
-% V = fnc_summary_veins_HLD(G_veins,total_area,polygon_area,micron_per_pixel);
-% A = fnc_summary_areole_stats(areole_stats,polygon_area,micron_per_pixel,FullMetrics);
-% P = fnc_summary_polygon_stats(polygon_stats,micron_per_pixel,FullMetrics);
-% % As the summary functions reduce the distribution for each variable to a
-% % single values, the summary statistics can be combined into a single row
-% % vector for the remaining network (HLD_metrics) and each HLD slice
-% % (Sl_HLD_metrics)
-% HLD_full_metrics(1,:) = [V A P];
-% HLD_slice_metrics(1,:) = [V A P];
-% get all the current polygon PixelIdxLists at the start as a cell array;
-P_PIL = {polygon_stats.PixelIdxList};
-        PCC.NumObjects = length(P_PIL);
-        PCC.PixelIdxList  = {polygon_stats.PixelIdxList}';
-          LM = labelmatrix(PCC);
-P_stats = regionprops('table',LM,'Area','Centroid','Perimeter','MajorAxisLength','MinorAxisLength','Eccentricity','Orientation');
-% set up the endnodes
-EndNodes = zeros(nnP*2-2,2,'single');
-% set a colormap with nnP entries
-% % % cols = jet(nnP);
-% % % % set up the array for nodes that are included at each level
-% % % include = cell(nLevels,1);
-% % % include{1} = 1:nnP;
-% % % % set up the array for nodes that are excluded at each step
-% % % exclude = zeros(nnP-1,2);
-% % % G_previous = G_veins;
-% loop through all the edges, calculating the metrics
-for iE = 1:neP
-    % test each edge in sequence
-    Ni = ET(1,1);
-    Nj = ET(1,2);
-    % the edge to be removed only links two areas if
-    % the end nodes are different
-    if Ni~=Nj
-%         Nf = single(Nf+1);
-        % create a new node
-        Nk = single(Nk+1);
-        % get the width threshold for the HLD for this partition
-        width_threshold(Nk,1) = ET(1,3);
-        % construct the EndNodes for the two new edges that connect Ni and Nj to Nk
-        Ne = Ne+1;
-        EndNodes(Ne,:) = [Ni Nk];
-        Ne = Ne+1;
-        EndNodes(Ne,:) = [Nj Nk];
-        % sum the areas of the nodes to fuse
-        node_Area(Nk) = node_Area(Ni)+node_Area(Nj);
-        % sum the degree of the subtree at each node
-        node_Degree(Nk) = node_Degree(Ni)+node_Degree(Nj);
-        % find a measure of the partition asymmetry of the
-        % bifurcation vertex
-        node_Asymmetry(Nk,1) = abs(node_Degree(Ni)-node_Degree(Nj))/max(node_Degree(Ni),node_Degree(Nj));
-        % calculate the subtree asymmetry
-        subtree_Asymmetry(Nk,1) = (1/(node_Degree(Nk)-1))*((node_Asymmetry(Ni)*(node_Degree(Ni)-1))+(node_Asymmetry(Nj)*(node_Degree(Nj)-1)));
-        % Strahler index: keep the larger of the Horton-Strahler indices if they
-        % are not equal. If they are equal, increment the HS index by one
-        if node_HS(Ni) ~= node_HS(Nj)
-            node_HS(Nk,1) = max(node_HS(Ni),node_HS(Nj));
-        else
-            node_HS(Nk,1) = node_HS(Ni)+1;
-        end
-        % delete the current edge
-        ET(1,:) = [];
-        % replace any other occurrences of the nodes that have fused with
-        % the new node ID
-        idx = ET(:,1) == Ni | ET(:,1) == Nj;
-        ET(idx,1) = Nk;
-        idx = ET(:,2) == Ni | ET(:,2) == Nj;
-        ET(idx,2) = Nk;
-        % set the parent of the nodes to be fused to the new node
-        parent(Ni) = Nk;
-        parent(Nj) = Nk;
-        % add the PixelIdxList for the nodes that have fused to the new node
-        P_PIL(Nk) = {cat(1,P_PIL{Ni},P_PIL{Nj})};
-        % calculate the statistics for the new region and add them to the
-        % stats structures
-        PCC.NumObjects = 1;
-        PCC.PixelIdxList  = P_PIL(Nk);
-        %         LM = labelmatrix(PCC);
-        P_stats(Nk,:) = regionprops('table',PCC,'Area','Centroid','Perimeter','MajorAxisLength','MinorAxisLength','Eccentricity','Orientation');
-        %         [A_stats,P_stats] = fnc_polygon_analysis(bw_polygons,bw_areoles, LM, FullMetrics);
-        %         A_stats.ID = Nk;
-        %         HLD_stats.ID = Nk;
-        %         areole_stats(Nk) = A_stats;
-        %         P_stats(Nk,:) = HLD_stats;
-        % % %         % add the nodes that have fused to the exclude list
-        % % %         exclude(Nf,:) = [Ni Nj];
-        % % %         % find edges in the vein graph up to and including this edge width
-        
-        Eidx = G_veins.Edges.Width <= width_threshold(Nk,1);
-        % remove these edges from the graph
-        G_veins = rmedge(G_veins,find(Eidx));
-        % only keep veins that are still connected to the largest component
-        CC = conncomp(G_veins);
-        [N,~] = histcounts(CC,max(CC));
-        [~,idx] = max(N);
-        G_veins = subgraph(G_veins,find(CC==idx));
-        % replace any occurrences of the nodes that have fused with
-        % the new node ID
-        idx = G_veins.Edges.Ai == Ni | G_veins.Edges.Ai == Nj;
-        G_veins.Edges.Ai(idx) = Nk;
-        idx = G_veins.Edges.Aj == Ni | G_veins.Edges.Aj == Nj;
-        G_veins.Edges.Aj(idx) = Nk;
-% calculate the minimum spanning tree using Kruskal's algorithm
-MST = minspantree(G_veins,'method','sparse');
-VTotLen(Nk,1) = sum(G_veins.Edges.Weight);
-MSTRatio(Nk,1) = sum(MST.Edges.Weight)/VTotLen(Nk,1);
-        
-%         % check whether the current edge is above the threshold for
-%         % the next edge width interval
-%         switch HLD_level_criteria
-%             case 'area'
-%                 % count the number of nodes (areas) now present
-%                 nP = (2*nnP)-Nk;
-%                 % check whether the areas remaining are a power of sqrt(2).
-%                 % If so then record the current edge width to use as a
-%                 % threshold in the HLD movie
-%                 if nP <= criteria(nL)
-%                     HLD_levels(nL,:) = [ET(1,3),nP];
-%                     % increment the level counter
-%                     nL = nL + 1;
-%                     flag = 1;
-%                 else
-%                     flag = 0;
-%                 end
-%             case 'width'
-%                 
-%                 if iE >= criteria(nL)
-%                     % increment the level counter
-%                     nL = nL + 1;
-%                     flag = 1;
-%                 else
-%                     flag = 0;
-%                 end
-%         end
-%         if flag == 1
-%             % store the current width as a threshold
-%             HLD_levels(nL,:) = [ET(1,3),iE];
-%             % record the node at this threshold
-%             Nt(nL) = Nk;
-%             % collect all the nodes that are still present at this level
-%             include{nL} = setdiff(1:Nk,exclude(:));
-%             % calculate the stats for these nodes
-%             P = fnc_summary_polygon_stats(polygon_stats(include{nL}),micron_per_pixel,FullMetrics);
-%             A = fnc_summary_areole_stats(areole_stats(include{nL}),polygon_area,micron_per_pixel,FullMetrics);
-%             V = fnc_summary_veins_HLD(G_veins,total_area,polygon_area,micron_per_pixel);
-%             HLD_full_metrics(nL,:) = [V A P];
-%             % extract the veins that have been removed to calculate their stats
-%             % separately. Start by finding the edges that have been removed
-%             % between the previous network and the current network
-%             idx = ismember(G_previous.Edges.Name,G_veins.Edges.Name);
-%             G_cut = rmedge(G_previous,find(idx));
-%             % find the nodes that were remove at this level
-%             slice = setdiff(include{nL-1},include{nL});
-%             % calculate the stats for just these nodes
-%             SlP = fnc_summary_polygon_stats(polygon_stats(slice),micron_per_pixel,FullMetrics);
-%             SlA = fnc_summary_areole_stats(areole_stats(slice),polygon_area,micron_per_pixel,FullMetrics);
-%             SlV = fnc_summary_veins_HLD(G_cut,total_area,polygon_area,micron_per_pixel);
-%             HLD_slice_metrics(nL,:) = [SlV SlA SlP];
-%             if ShowFigs == 1
-%                 [X,Y] = gplot(adjacency(G_cut),[G_cut.Nodes.node_X_pix,G_cut.Nodes.node_Y_pix]);
-%                 plot(X, Y, '-', 'Color', cols(Nk-nnP,:)); %
-%                 drawnow
-%             end
-%             % take a copy of the current vein graph
-%             G_previous = G_veins;
-%         end
-    else
-        % delete the current edge as it lies within areas that are already
-        % fused
-        ET(1,:) = [];
-    end
-end
-% complete links to the root node
-parent(end+1) = Nk+1;
-parent = double(fliplr(max(parent(:)) - parent));
-% assemble the HLD graph object
-NodeTable = table((1:(2*nnP)-1)', width_threshold, node_Area, node_Degree, ...
-    node_Asymmetry, node_HS, subtree_Asymmetry, [P_stats.Perimeter], [P_stats.MajorAxisLength],[P_stats.MinorAxisLength],[P_stats.Eccentricity], [P_stats.Orientation], VTotLen, MSTRatio, ...
-    'VariableNames',{'node_ID', 'width_threshold', 'node_Area', 'node_Degree', ...
-    'node_Asymmetry', 'node_HS', 'subtree_Asymmetry', 'Perimeter','MajorAxisLength', 'MinorAxisLength', 'Eccentricity','Orientation','VTotLen','MSTRatio'});
-idx = NodeTable.node_Area == 0;
-NodeTable(idx,:) = [];
-EdgeTable = table(EndNodes, ...
-    'VariableNames', {'EndNodes'});
-idx = EdgeTable.EndNodes(:,1)==0;
-EdgeTable(idx,:) = [];
-idx = EdgeTable.EndNodes(:,2)==0;
-EdgeTable(idx,:) = [];
-% combine to form the HLD tree graph
-G_HLD = graph(EdgeTable, NodeTable);
-% export the decomposition order image
-%im_HLD_order = export_fig('HLD_coded','-png','-m4',hfig);
-%delete(hfig);
-% assignin('base','P_stats',P_stats)
-toc
-end
-
-function [HLD_levels, G_HLD, parent, HLD_full_metrics, HLD_slice_metrics, im_HLD_order] = fnc_HLD_old(G_veins, G_polygons, G_areoles, polygon_stats, areole_stats, bw_polygons, bw_areoles, total_area,polygon_area,micron_per_pixel,ShowFigs,FullMetrics)
-tic
-% construct a full binary polygon CC object
-PCC.Connectivity = 4;
-PCC.ImageSize = size(bw_polygons);
-PCC.NumObjects = 1;
-PCC.PixelIdxList = {};
-% % set up a slice CC object
-% SlCC.Connectivity = 4;
-% SlCC.ImageSize = size(bw_polygons);
-% SlCC.NumObjects = 1;
-% SlCC.PixelIdxList = {};
-% select the largest component of the polygon graph
-CC = conncomp(G_polygons);
-idx = find(CC==1);
-G_polygons = subgraph(G_polygons,idx);
-% % extract the same component from the areole graph (which has the same node
-% % IDs as the polygon graph).
-% G_areoles = subgraph(G_areoles,idx);
-% extract the same component from the stats arrays
-polygon_stats = polygon_stats(idx);
-areole_stats = areole_stats(idx);
-% get the ID of the nodes remaining
-ID = G_polygons.Nodes.ID;
-if ShowFigs == 1
-    % plot the adjacency graph for the full network
-    hfig = figure;
-    hfig.Units = 'normalized';
-    hfig.Position = [0 0 0.8 1];
-    hfig.Color = 'w';
-    gplot(adjacency(G_veins),[G_veins.Nodes.node_X_pix,G_veins.Nodes.node_Y_pix],'k:')
-    axis off
-    axis ij
-    axis image
-    axis square
-    box on
-    hold on
-end
 % Keep veins from the vein graph that form part of the polygon_graph. These
 % will be the boundary edges and any internal tree-like parts of the
 % network, but will exclude edges from incomplete polygons on the boundary
 % or disconnected polygons. Edges should have Ai and/or
 % Aj corresponding to a polygon node ID.
-Eidx = ismember(G_veins.Edges.Ai,ID) | ismember(G_veins.Edges.Aj,ID);
-G_veins = rmedge(G_veins,find(~Eidx));
-if ShowFigs == 1
-    % update the adjacency graph with the selected subset of veins
-    gplot(adjacency(G_veins),[G_veins.Nodes.node_X_pix,G_veins.Nodes.node_Y_pix],'k-')
-    drawnow
-end
+Vidx = ismember(G_veins.Edges.Ai,idx) | ismember(G_veins.Edges.Aj,idx);
+G_veins = rmedge(G_veins,find(~Vidx));
+% only keep veins that are still connected to the largest component
+CC = conncomp(G_veins);
+[N,~] = histcounts(CC,max(CC));
+[~,idx] = max(N);
+G_veins = subgraph(G_veins,find(CC==idx));
+% calculate the initial length and MST ratio for the veins
+L = sum(G_veins.Edges.Length);
+MST = minspantree(G_veins,'method','sparse');
+MSTL = sum(MST.Edges.Weight)/L;
 % get the number of nodes and edge in the dual graph
 nnP = single(numnodes(G_polygons));
 neP = single(numedges(G_polygons));
 parent = single(zeros(1,nnP));
 width_threshold = zeros((2*nnP)-1,1,'single');
+node_Boundary = [G_polygons.Nodes{:,'Boundary'}; zeros(nnP-1,1,'single')];
 node_Area = [G_polygons.Nodes{:,'Area'}; zeros(nnP-1,1,'single')];
 node_Degree = [ones(nnP,1,'single'); zeros(nnP-1,1,'single')];
-node_Asymmetry = zeros(nnP*2-1,1,'single');
+degree_Asymmetry = zeros(nnP*2-1,1,'single');
+area_Asymmetry = zeros(nnP*2-1,1,'single');
 node_HS = [ones(nnP,1,'single'); zeros(nnP-1,1,'single')];
-subtree_Asymmetry = zeros((2*nnP)-1,1,'single');
-%area_ = zeros((2*nnP)-1,1,'single');
-area_Asymmetry = zeros((2*nnP)-1,1,'single');
+subtree_degree_Asymmetry = zeros((2*nnP)-1,1,'single');
+subtree_area_Asymmetry = zeros((2*nnP)-1,1,'single');
+VTotLen = [repmat(L,nnP,1); zeros(nnP-1,1,'single')];
+MSTRatio = [repmat(MSTL,nnP,1); zeros(nnP-1,1,'single')];
 % redimension the stat arrays to accomodate all the fused nodes
 areole_stats(nnP.*2-1).Area = 0;
 polygon_stats(nnP.*2-1).Area = 0;
-% set the counter for the number of fusions
-Nf = 1;
 % order the edges by width in the polygon graph
 [W,idx] = sort(G_polygons.Edges{:,'Width'});
 % sort the edge nodes and edge name to match the ordered widths
@@ -2337,64 +2019,23 @@ ET = single([nodei nodej W]);
 % start the index for the new node (Nk) to follow on the number of existing
 % nodes (nnP)
 Nk = nnP;
-Nt(1) = nnP;
 Ne = 0;
-nLevels = 30;
-HLD_level_criteria = 'width';
-switch HLD_level_criteria
-    case 'area'
-        % set the first level for output in the HLD_movie to the nearest power of 2
-        % within the number of nodes. The level will count down from this
-        % number of areas until the final value is 1.
-        mx = 2*(nextpow2(nnP)-1);
-        criteria = single(round(sqrt(2).^(mx:-1:1)));
-    case 'width'
-        % set up the cumulative widths
-        csW = cumsum(W);
-        % use the discretize function to divide into equal number of bins
-        [~,BinEdges] = discretize(csW,min(neP,nLevels+1));
-        bins = BinEdges(2:end-1);
-        % find the nearest edge in csW that exceeds each bin edge
-        [~,criteria] = min(single(abs(csW-bins)));
-end
-% set up an array to hold the width criteria
-HLD_levels = zeros(numel(criteria),2,'single');
-nL = 1;
-% calculate the full set of summary statistics for the initial network
-% (excluding the separation into tree and loops)
-V = fnc_summary_veins_HLD(G_veins,total_area,polygon_area,micron_per_pixel);
-A = fnc_summary_areole_stats(areole_stats,polygon_area,micron_per_pixel,FullMetrics);
-P = fnc_summary_polygon_stats(polygon_stats,micron_per_pixel,FullMetrics);
-% As the summary functions reduce the distribution for each variable to a
-% single values, the summary statistics can be combined into a single row
-% vector for the remaining network (HLD_metrics) and each HLD slice
-% (Sl_HLD_metrics)
-HLD_full_metrics(1,:) = [V A P];
-HLD_slice_metrics(1,:) = [V A P];
 % get all the current polygon PixelIdxLists at the start as a cell array;
 P_PIL = {polygon_stats.PixelIdxList};
+PCC.NumObjects = length(P_PIL);
+PCC.PixelIdxList  = {polygon_stats.PixelIdxList}';
+LM = labelmatrix(PCC);
+P_stats = regionprops('table',LM,'Area','Centroid','Perimeter','MajorAxisLength','MinorAxisLength','Eccentricity','Orientation');
 % set up the endnodes
 EndNodes = zeros(nnP*2-2,2,'single');
-% set a colormap with nnP entries
-cols = jet(nnP);
-% set up the array for nodes that are included at each level
-include = cell(nLevels,1);
-include{1} = 1:nnP;
-% set up the array for nodes that are excluded at each step
-exclude = zeros(nnP-1,2);
-G_previous = G_veins;
 % loop through all the edges, calculating the metrics
 for iE = 1:neP
-    if Nf >10
-        break
-    end
     % test each edge in sequence
     Ni = ET(1,1);
     Nj = ET(1,2);
     % the edge to be removed only links two areas if
     % the end nodes are different
     if Ni~=Nj
-        Nf = single(Nf+1);
         % create a new node
         Nk = single(Nk+1);
         % get the width threshold for the HLD for this partition
@@ -2404,15 +2045,21 @@ for iE = 1:neP
         EndNodes(Ne,:) = [Ni Nk];
         Ne = Ne+1;
         EndNodes(Ne,:) = [Nj Nk];
+        % check whether the fused area includes a boundary region
+        node_Boundary(Nk) = max(node_Boundary(Ni),node_Boundary(Nj));
         % sum the areas of the nodes to fuse
         node_Area(Nk) = node_Area(Ni)+node_Area(Nj);
         % sum the degree of the subtree at each node
         node_Degree(Nk) = node_Degree(Ni)+node_Degree(Nj);
         % find a measure of the partition asymmetry of the
         % bifurcation vertex
-        node_Asymmetry(Nk,1) = abs(node_Degree(Ni)-node_Degree(Nj))/max(node_Degree(Ni),node_Degree(Nj));
+        degree_Asymmetry(Nk,1) = abs(node_Degree(Ni)-node_Degree(Nj))/max(node_Degree(Ni),node_Degree(Nj));
         % calculate the subtree asymmetry
-        subtree_Asymmetry(Nk,1) = (1/(node_Degree(Nk)-1))*((node_Asymmetry(Ni)*(node_Degree(Ni)-1))+(node_Asymmetry(Nj)*(node_Degree(Nj)-1)));
+        subtree_degree_Asymmetry(Nk,1) = (1/(node_Degree(Nk)-1))*((degree_Asymmetry(Ni)*(node_Degree(Ni)-1))+(degree_Asymmetry(Nj)*(node_Degree(Nj)-1)));
+        area_Asymmetry(Nk,1) = abs(node_Area(Ni)-node_Area(Nj))/max(node_Area(Ni),node_Area(Nj));
+        % calculate the subtree asymmetry
+        subtree_area_Asymmetry(Nk,1) = (1/(node_Area(Nk)-1))*((area_Asymmetry(Ni)*(node_Area(Ni)-1))+(area_Asymmetry(Nj)*(node_Area(Nj)-1)));
+        
         % Strahler index: keep the larger of the Horton-Strahler indices if they
         % are not equal. If they are equal, increment the HS index by one
         if node_HS(Ni) ~= node_HS(Nj)
@@ -2437,14 +2084,7 @@ for iE = 1:neP
         % stats structures
         PCC.NumObjects = 1;
         PCC.PixelIdxList  = P_PIL(Nk);
-        LM = labelmatrix(PCC);
-        [A_stats,P_stats] = fnc_polygon_analysis(bw_polygons,bw_areoles, LM, FullMetrics);
-        A_stats.ID = Nk;
-        P_stats.ID = Nk;
-        areole_stats(Nk) = A_stats;
-        polygon_stats(Nk) = P_stats;
-        % add the nodes that have fused to the exclude list
-        exclude(Nf,:) = [Ni Nj];
+        P_stats(Nk,:) = regionprops('table',PCC,'Area','Centroid','Perimeter','MajorAxisLength','MinorAxisLength','Eccentricity','Orientation');
         % find edges in the vein graph up to and including this edge width
         Eidx = G_veins.Edges.Width <= width_threshold(Nk,1);
         % remove these edges from the graph
@@ -2460,65 +2100,10 @@ for iE = 1:neP
         G_veins.Edges.Ai(idx) = Nk;
         idx = G_veins.Edges.Aj == Ni | G_veins.Edges.Aj == Nj;
         G_veins.Edges.Aj(idx) = Nk;
-        % check whether the current edge is above the threshold for
-        % the next edge width interval
-        switch HLD_level_criteria
-            case 'area'
-                % count the number of nodes (areas) now present
-                nP = (2*nnP)-Nk;
-                % check whether the areas remaining are a power of sqrt(2).
-                % If so then record the current edge width to use as a
-                % threshold in the HLD movie
-                if nP <= criteria(nL)
-                    HLD_levels(nL,:) = [ET(1,3),nP];
-                    % increment the level counter
-                    nL = nL + 1;
-                    flag = 1;
-                else
-                    flag = 0;
-                end
-            case 'width'
-                
-                if iE >= criteria(nL)
-                    % increment the level counter
-                    nL = nL + 1;
-                    flag = 1;
-                else
-                    flag = 0;
-                end
-        end
-        if flag == 1
-            % store the current width as a threshold
-            HLD_levels(nL,:) = [ET(1,3),iE];
-            % record the node at this threshold
-            Nt(nL) = Nk;
-            % collect all the nodes that are still present at this level
-            include{nL} = setdiff(1:Nk,exclude(:));
-            % calculate the stats for these nodes
-            P = fnc_summary_polygon_stats(polygon_stats(include{nL}),micron_per_pixel,FullMetrics);
-            A = fnc_summary_areole_stats(areole_stats(include{nL}),polygon_area,micron_per_pixel,FullMetrics);
-            V = fnc_summary_veins_HLD(G_veins,total_area,polygon_area,micron_per_pixel);
-            HLD_full_metrics(nL,:) = [V A P];
-            % extract the veins that have been removed to calculate their stats
-            % separately. Start by finding the edges that have been removed
-            % between the previous network and the current network
-            idx = ismember(G_previous.Edges.Name,G_veins.Edges.Name);
-            G_cut = rmedge(G_previous,find(idx));
-            % find the nodes that were remove at this level
-            slice = setdiff(include{nL-1},include{nL});
-            % calculate the stats for just these nodes
-            SlP = fnc_summary_polygon_stats(polygon_stats(slice),micron_per_pixel,FullMetrics);
-            SlA = fnc_summary_areole_stats(areole_stats(slice),polygon_area,micron_per_pixel,FullMetrics);
-            SlV = fnc_summary_veins_HLD(G_cut,total_area,polygon_area,micron_per_pixel);
-            HLD_slice_metrics(nL,:) = [SlV SlA SlP];
-            if ShowFigs == 1
-                [X,Y] = gplot(adjacency(G_cut),[G_cut.Nodes.node_X_pix,G_cut.Nodes.node_Y_pix]);
-                plot(X, Y, '-', 'Color', cols(Nk-nnP,:)); %
-                drawnow
-            end
-            % take a copy of the current vein graph
-            G_previous = G_veins;
-        end
+        % calculate the minimum spanning tree using Kruskal's algorithm
+        MST = minspantree(G_veins,'method','sparse');
+        VTotLen(Nk,1) = sum(G_veins.Edges.Weight);
+        MSTRatio(Nk,1) = sum(MST.Edges.Weight)/VTotLen(Nk,1);
     else
         % delete the current edge as it lies within areas that are already
         % fused
@@ -2529,8 +2114,25 @@ end
 parent(end+1) = Nk+1;
 parent = double(fliplr(max(parent(:)) - parent));
 % assemble the HLD graph object
-NodeTable = table((1:(2*nnP)-1)', width_threshold, node_Area, node_Degree, node_Asymmetry, node_HS,subtree_Asymmetry, area_Asymmetry, ...
-    'VariableNames',{'node_ID' 'width_threshold' 'node_Area' 'node_Degree' 'node_Asymmetry' 'node_HS' 'subtree_Asymmetry' 'area_Asymmetry' });
+NodeTable = table((1:(2*nnP)-1)', width_threshold.*mm, ...
+    node_Area.*(mm^2), ...
+    node_Degree, ...
+    degree_Asymmetry, ...
+    subtree_degree_Asymmetry, ...
+    area_Asymmetry, ...
+    subtree_area_Asymmetry, ...
+    node_HS, ...
+    [P_stats.Perimeter].*mm, ...
+    [P_stats.MajorAxisLength].*mm, ...
+    [P_stats.MinorAxisLength].*mm, ...
+    [P_stats.Eccentricity], ...
+    [P_stats.Orientation], ...
+    VTotLen.*mm, ...
+    MSTRatio, ...
+    node_Boundary, ...
+    'VariableNames',{'node_ID', 'width_threshold', 'node_Area', 'node_Degree', ...
+    'degree_Asymmetry',  'subtree_degree_Asymmetry', 'area_Asymmetry',  'subtree_area_Asymmetry', ...
+    'node_HS','Perimeter','MajorAxisLength', 'MinorAxisLength', 'Eccentricity','Orientation','VTotLen','MSTRatio','Boundary'});
 idx = NodeTable.node_Area == 0;
 NodeTable(idx,:) = [];
 EdgeTable = table(EndNodes, ...
@@ -2541,10 +2143,6 @@ idx = EdgeTable.EndNodes(:,2)==0;
 EdgeTable(idx,:) = [];
 % combine to form the HLD tree graph
 G_HLD = graph(EdgeTable, NodeTable);
-% export the decomposition order image
-%im_HLD_order = export_fig('HLD_coded','-png','-m4',hfig);
-%delete(hfig);
-toc
 end
 
 function hfig = display_PR(PR, FolderName)
@@ -2567,7 +2165,7 @@ ylabel('Precision')
 ax = gca;
 ax.FontUnits = 'points';
 ax.FontSize = 14;
-legend(h,methods,'Location','SouthEast')
+legend(h,methods,'Location','SouthWest')
 %title([FolderName ' : Precision-Recall  full-width images'])
 drawnow
 end
@@ -2590,34 +2188,45 @@ ylabel('Precision')
 ax = gca;
 ax.FontUnits = 'points';
 ax.FontSize = 14;
-legend(h,strrep(methods,'_sk',''),'Location','SouthEast')
-
+legend(h,strrep(methods,'_sk',''),'Location','SouthWest')
 % title([FolderName ' : Precision-Recall skeleton'])
 drawnow
 end
 
 function hfig = display_figure(images,graphs,titles,G,E_width,links,name,ExportFigs)
 hfig = figure;
+inset_sz = 2/5;
+inset_zoom = 6;
 for ia = 1:6
     ax(ia) = subplot(2,3,ia);
-    axes(ax(ia))
     pos = ax(ia).OuterPosition;
     ax(ia).Position = pos;
+    ax(ia+6) = axes('Position', [pos(1)+pos(3)*(1-inset_sz) pos(2)+pos(4)*(1-inset_sz) pos(3)*inset_sz pos(4)*inset_sz]);
 end
 hfig.Units = 'normalized';
 hfig.Position = [0 0 1 1];
 hfig.Color = 'w';
 linkaxes(ax(links),'xy')
-set(gcf,'renderer','opengl')
+set(gcf,'renderer','painters')
 for ia = 1:6
     axes(ax(ia))
     if ~isempty(images{ia})
-        imshow(images{ia},[])
+        imshow(images{ia},[]);
         h = title(titles{ia},'fontsize',12,'fontweight','normal','interpreter','none');
         h.FontWeight = 'normal';
+        ax(ia).XTick = [];
+        ax(ia).YTick = [];
+        % display the inset
+        axes(ax(ia+6))
+        imshow(images{ia},[]);
+        zoom(inset_zoom)
+        ax(ia+6).Box = 'on';
+        ax(ia+6).XColor = 'K';
+        ax(ia+6).YColor = 'K';
+        ax(ia+6).LineWidth = 1;
+        ax(ia+6).XTick = [];
+        ax(ia+6).YTick = [];
     end
-    ax(ia).XTick = [];
-    ax(ia).YTick = [];
 end
 for ia = 1:6
     if ~strcmp(graphs{ia},'none')
@@ -2644,12 +2253,17 @@ for ia = 1:6
         plot(G, 'XData',G.Nodes.node_X_pix,'YData',G.Nodes.node_Y_pix, ...
             'NodeColor','g','MarkerSize',1,'Marker', 'none', 'NodeLabel', [], ...
             'EdgeColor',E_color,'EdgeAlpha',1,'EdgeLabel', [],'LineWidth',E_width);
+        axes(ax(ia+6))
+        hold on
+        plot(G, 'XData',G.Nodes.node_X_pix,'YData',G.Nodes.node_Y_pix, ...
+            'NodeColor','g','MarkerSize',1,'Marker', 'none', 'NodeLabel', [], ...
+            'EdgeColor',E_color,'EdgeAlpha',1,'EdgeLabel', [],'LineWidth',1);
     end
 end
 drawnow
 if ExportFigs
     export_fig(name,'-png','-r300',hfig)
-    saveas(hfig,name)
+%     saveas(hfig,name)
 end
 end
 
@@ -2658,114 +2272,166 @@ hfig = figure;
 hfig.Units = 'normalized';
 hfig.Position = [0 0 0.6 1];
 hfig.Color = 'w';
-% display the dual graph
-ax(1) = subplot(3,3,1);
-    axes(ax(1))
-    pos = ax(1).OuterPosition;
-    ax(1).Position = pos;
-% sz = size(im_cnn);
-% r = [round(sz(1)./3):round(sz(1).*2/3)];
-% c = [round(sz(2)./3):round(sz(2).*2/3)];
-% imshow(im_cnn(r,c),[])
+% display the CNN image to overlay the subgraphs
+ax(1) = subplot(3,3,4);
+axes(ax(1))
+pos = ax(1).OuterPosition;
+ax(1).Position = pos;
 imshow(im_cnn,[])
-% get edge width
-E = G_polygons.Edges.Width;
-E(isinf(E)) = nan;
-% Normalise the metric between min and max and generate an index
-% into the colourmap
-E_min = min(E,[], 'omitnan');
-E_max = max(E,[], 'omitnan');
-% normalise the range between 2 and 256 as an index into the
-% colourmap
-E_idx = ceil(254.*((E-E_min)./(E_max-E_min)))+1;
-% set any nan values to 1 in the index
-E_idx(isnan(E_idx)) = 1;
-% the index should be real numbers normalised between 1 and 256 at
-% this point.
-cmap = jet(256);
-cmap(1,:) = 0;
-E_color =  cmap(E_idx,:);
-
 hold on
-plot(G_polygons, 'XData',G_polygons.Nodes.node_X_pix,'YData',G_polygons.Nodes.node_Y_pix, ...
-    'NodeColor','g','MarkerSize',1,'Marker', 'none', 'NodeLabel', [], ...
-    'EdgeColor',E_color,'EdgeAlpha',1,'EdgeLabel', [],'LineWidth',1);
 axis off
 box on
-% display the treeplot
-subplot(3,3,[2,3])
-treeplot(parent,'','r')
+% display the complete treeplot
+subplot(3,3,[1,3])
+h = plot(G_HLD,'Layout','layered','Direction','down','sources',numnodes(G_HLD), ...
+    'AssignLayers','alap','NodeColor','k','Marker','.','EdgeColor','k','LineWidth',1);
+% recolor any nodes connected to the boundary in grey
+SP = shortestpathtree(G_HLD,numnodes(G_HLD),G_HLD.Nodes.node_ID(find(G_HLD.Nodes.Boundary)));
+highlight(h,SP,'NodeColor',[0.5 0.5 0.5],'EdgeColor',[0.5 0.5 0.5],'Marker','*','LineWidth',1)
 ylabel('node level');
-xlabel('terminal nodes');
+xlabel('terminal node');
+axis tight
+axis on
+xlim([0 numnodes(G_polygons)])
+y = ylim;
+ylim([0 y(2)])
 box on
-% calculate the average asymmetry
-subplot(3,3,4)
-scatter(log(G_HLD.Nodes.node_Degree), G_HLD.Nodes.subtree_Asymmetry)
-xlabel('log degree')
-ylabel('subtree asymmetry')
-box on
-% calculate the cumulative size distribution
-a = sort(G_HLD.Nodes.node_Area,'ascend');
-csN = cumsum(1:numnodes(G_HLD));
-Pa = 1-(csN/max(csN));
-subplot(3,3,5)
-plot(log(a),log(a.*Pa'), 'go-')
-xlabel('log area')
-ylabel('log Pa*area')
-box on
-% calculate the strahler bifurcation ratio
-for iHS = 1:max(G_HLD.Nodes.node_HS)-1
-    Bifurcation_ratio(iHS) = sum(G_HLD.Nodes.node_HS==iHS)/sum(G_HLD.Nodes.node_HS==iHS+1);
-end
-subplot(3,3,6)
-plot(Bifurcation_ratio,'ro-')
-xlabel('Strahler number')
-ylabel('bifurcation ratio')
-box on
+
 % display the tree width histogram
-subplot(3,3,7)
-[TR,D] = shortestpathtree(G_HLD,numnodes(G_HLD),'OutputForm','cell');
-histogram(G_HLD.Nodes.width_threshold([TR{:}]),100)
-xlabel('width of edge removed')
-ylabel('freq. of paths traversing edge')
-box on
-% display the eccentricity against width threshold
-subplot(3,3,8)
-% plot(G_HLD.Nodes.width_threshold([TR{:}]),G_HLD.Nodes.Eccentricity([TR{:}]),'.')
-plot(G_HLD.Nodes.Eccentricity,'.')
-xlabel('edge removed')
-ylabel('areole eccentricity')
-box on
-subplot(3,3,9)
-plot(G_HLD.Nodes.MSTRatio,'.')
-xlabel('edge removed')
-ylabel('MST Ratio')
-box on
+subplot(3,3,5)
+nbins = 50;
+% [TR,D] = shortestpathtree(G_HLD,numnodes(G_HLD),1:numnodes(G_polygons),'OutputForm','cell');
+% h = histogram(G_HLD.Nodes.width_threshold([TR{:}]),nbins)
+% h.FaceColor = 'r';
+% xlabel('width of edge removed')
+% ylabel('freq. of paths traversing edge')
 
-% % display the cumulative width pdf
-% W = sort(G_polygons.Edges{:,'Width'});
-% subplot(3,3,7)
-% plot(cumsum(W),'k-')
-% hold on
-% plot([HLD_levels(:,2) HLD_levels(:,2)],ylim,'r:')
-% xlabel('edge number')
-% ylabel('cumulative width')
+vv = G_HLD.Nodes.width_threshold;
+ww = G_HLD.Nodes.node_Area;
+% get automatic bin limits using the histogram function
+[N,edges] = histcounts(vv,nbins);
+% calculate a weighted histogram
+[histw, histv] = histwv(vv, ww, min(edges), max(edges), nbins);
+% plot the histogram against the bin centers
+center = edges(2:end)-diff(edges(1:2))./2;
+bar(center(2:end),histw(2:end),'FaceColor',[0.5 0.5 0.5])
+xlabel('width of edge removed')
+ylabel('area weighted freq.')
+box on
+% extract the subgraph for nodes that are not linked to a boundary node
+g1 = subgraph(G_HLD,find(~G_HLD.Nodes.Boundary));
+% order by the largest connected subtree
+cc = conncomp(g1,'OutputForm','cell');
+l = cellfun(@(x) length(x),cc);
+[~,idx] = sort(l,'descend');
+% set up plot options
+cols = repmat({'r','g','b','c','m','y'},1,50);
+area_limits = ([floor(min(log(g1.Nodes.node_Area))-0.25) ceil(max(log(g1.Nodes.node_Area))+0.25)]);
+% extract the largest five fully connected subgraphs
+for icc = 1:5
+    % extract the HLD subgraph
+    g2 = subgraph(g1,cc{idx(icc)});
+    % recolor the nodes and edges
+    highlight(h,g2.Nodes.node_ID(g2.Edges.EndNodes(:,1)),g2.Nodes.node_ID(g2.Edges.EndNodes(:,2)),'NodeColor',cols{icc},'Marker','o','EdgeColor',cols{icc},'LineWidth',1)
+    % get the node-IDs for the subtree to overlay on the image
+    Gidx = g1.Nodes.node_ID(cc{idx(icc)});
+    % limit the nodes to display to the initial nodes
+    Gidx(Gidx>numnodes(G_polygons)) = [];
+    % extract the subgraph from the original dual-graph that contain the selected nodes
+    g3 = subgraph(G_polygons,Gidx);
+    % display the subgraph on the image
+    plot(ax(1),g3, 'XData',g3.Nodes.node_X_pix,'YData',g3.Nodes.node_Y_pix, ...
+        'NodeColor','g','MarkerSize',1,'Marker', 'none', 'NodeLabel', [], ...
+        'EdgeColor',cols{icc},'EdgeAlpha',1,'EdgeLabel', [],'LineWidth',1);
+    
+    % plot the strahler bifurcation ratio
+    maxX = max(g1.Nodes.node_HS);
+    Bifurcation_ratio = [];
+    for iHS = 1:max(g2.Nodes.node_HS)-1
+        Bifurcation_ratio(iHS) = sum(g2.Nodes.node_HS==iHS)/sum(g2.Nodes.node_HS==iHS+1);
+    end
+    subplot(3,3,6)
+    plot(Bifurcation_ratio+icc.*.1,'Color',cols{icc},'Marker','o','Linestyle', '-')
+    hold on
+    xlim([0 maxX])
+    ylim([0 8])
+    xlabel('Strahler number')
+    ylabel('bifurcation ratio')
+    box on
+    
+      % calculate the cumulative size distribution
+    a = sort(g2.Nodes.node_Area,'ascend');
+    csN = cumsum(1:numnodes(g2));
+    Pa = 1-(csN/max(csN));
+    subplot(3,3,7)
+    plot(log(a),log(a.*Pa'), 'Color',cols{icc},'Marker','o','Linestyle', '-')
+    xlabel('log(area)')
+    ylabel('log Pa*area')
+    xlim(area_limits)
+    ylim([-6 0])
+    hold on
+    box on
+    
+       % plot the MSTRatio
+    ax(8) = subplot(3,3,8);
+    plot(ax(8),log(g2.Nodes.node_Area), g2.Nodes.MSTRatio,'LineStyle','none','Marker','.','Color',cols{icc})
+%     histogram2(ax(2), g2.Nodes.MSTRatio, log(g2.Nodes.node_Area))
+    xlabel('log(area)')
+    ylabel('MST ratio')
+    xlim(area_limits)
+    ylim([0.5 1])
+    hold on
+    box on
+   
+        % plot the Circularity
+    ax(9) = subplot(3,3,9);
+    plot(ax(9),log(g2.Nodes.node_Area), 4*pi*g2.Nodes.node_Area./g2.Nodes.Perimeter.^2,'LineStyle','none','Marker','.','Color',cols{icc})
+    xlabel('log(area)')
+    ylabel('circularity')
+    xlim(area_limits)
+    ylim([0.2 1])
+    hold on
+    box on
+%             % plot the Roughness
+%     ax(2) = subplot(3,3,9);
+% %     Circularity = num2cell((4.*pi.*[areole_stats.Area])./([areole_stats.Perimeter].^2));
+% % Elongation = num2cell([areole_stats.MajorAxisLength]./[areole_stats.MinorAxisLength]);
+% % Roughness = num2cell(([areole_stats.Perimeter].^2)./[areole_stats.Area]);
 % 
-% box on
-% % display the removal order image
-% % subplot(3,3,8)
-% ax(8) = subplot(3,3,8);
-%     axes(ax(8))
-%     pos = ax(8).OuterPosition;
-%     ax(8).Position = pos;
-% 
-% imshow(im_HLD_order)
-% axis off
-% box on
-% % display the metric scaling relationship
-% subplot(3,3,9);
-% histogram
+%     plot(ax(2),4*pi*g2.Nodes.node_Area./g2.Nodes.Perimeter.^2, g2.Nodes.Perimeter.^2./g2.Nodes.node_Area,'LineStyle','none','Marker','.','Color',cols{icc})
+%     xlabel('log(area)')
+%     ylabel('roughness')
+%      xlim([-6 3])
+%     hold on
+%     box on
 end
 
+% % fit curves to overall results
+% fit_MST = fit(double(log(g1.Nodes.node_Area)), double(g1.Nodes.MSTRatio),'poly3');
+% axes(ax(8))
+% hold on
+% plot(fit_MST)
+
+end
+
+function [histw, histv] = histwv(v, w, min, max, bins)
+% code from Brent
+%Inputs: 
+%vv - values 
+%ww - weights 
+%minV - minimum value 
+%maxV - max value 
+%bins - number of bins (inclusive) 
+
+%Outputs: 
+%histw - wieghted histogram 
+%histv (optional) - histogram of values 
+
+delta = (max-min)/(bins-1); 
+subs = round((v-min)/delta)+1; 
+
+histv = accumarray(subs,1,[bins,1]); 
+histw = accumarray(subs,w,[bins,1]); 
+end
 
 
