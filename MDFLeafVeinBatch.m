@@ -1,13 +1,14 @@
 %% Initialise
 clc
 clear
-remote = 1;
-ShowFigs = 0;
-ExportFigs = 1;
-FullMetrics = 0;
+remote = 0;
+ShowFigs = 1;
+ExportFigs = 0;
+FullMetrics = 1;
+FullLeaf = 0;
 %% set up parameters
 micron_per_pixel = 1.6807;
-DownSample = 3;
+DownSample = 2;
 %% set up starting directory on the remote server
 if remote == 1
     addpath('/soge-home/projects/leaf-gpu/Matlab working')
@@ -82,13 +83,16 @@ dir_idx = [dir_struct.isdir];
 [sorted_names,~] = sortrows({dir_struct(dir_idx).name}');
 include_idx = contains(sorted_names,'-CLAHE');
 FolderNames = sorted_names(include_idx);
+%% set the start folder
+%start = find(contains(FolderNames,'insert filename'));
+start = 1;
 %% loop through each folder
-for iF = 1:numel(FolderNames)
+for iF = start:numel(FolderNames)
     try
         % change the working directory
         cd(FolderNames{iF});
         % run the analysis
-        results = MDFLeafVeinAnalysis_v5(FolderNames{iF},micron_per_pixel,DownSample,ShowFigs,ExportFigs,FullMetrics);
+        results = MDFLeafVeinAnalysis_v5(FolderNames{iF},micron_per_pixel,DownSample,ShowFigs,ExportFigs,FullLeaf,FullMetrics);
         % reset the working directory
         cd(dir_out_summary)
         % save the results to a single file

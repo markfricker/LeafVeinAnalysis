@@ -1,37 +1,38 @@
-function results = MDFLeafVeinAnalysis_v5(FolderName,micron_per_pixel,DownSample,ShowFigs,ExportFigs,FullMetrics)
-%% set up directories
-dir_out_images = ['..' filesep 'summary' filesep 'images' filesep];
-dir_out_width = ['..' filesep 'summary' filesep 'width' filesep];
-dir_out_data = ['..' filesep 'summary' filesep 'data' filesep];
-dir_out_HLD = ['..' filesep 'summary' filesep 'HLD' filesep];
-dir_out_PR_results = ['..' filesep 'summary' filesep 'PR' filesep 'results' filesep];
-dir_out_PR_images = ['..' filesep 'summary' filesep 'PR' filesep 'images' filesep];
-dir_out_PR_graphs = ['..' filesep 'summary' filesep 'PR' filesep 'graphs' filesep];
-dir_out_PR_fig = ['..' filesep 'summary' filesep 'PR' filesep 'fig' filesep];
-%% set up parameters
-micron_per_pixel = micron_per_pixel.*DownSample;
-sk_width = 3;
-E_width = 1;
-cmap = jet(256);
-cmap(1,:) = 0;
-step = 0;
-warning off
-%% Load in the images
-step = step+1;
-disp(['Step ' num2str(step) ': Processing ' FolderName])
-[im,im_cnn,bw_mask,bw_vein,bw_roi,bw_GT] = fnc_load_CNN_images(FolderName,DownSample);
-% test the performance against the internal ground truth
+%function results = MDFLeafVeinAnalysis_v5(FolderName,micron_per_pixel,DownSample,ShowFigs,ExportFigs,FullLeaf,FullMetrics)
+% %% set up directories
+% dir_out_images = ['..' filesep 'summary' filesep 'images' filesep];
+% dir_out_width = ['..' filesep 'summary' filesep 'width' filesep];
+% dir_out_data = ['..' filesep 'summary' filesep 'data' filesep];
+% dir_out_HLD = ['..' filesep 'summary' filesep 'HLD' filesep];
+% dir_out_PR_results = ['..' filesep 'summary' filesep 'PR' filesep 'results' filesep];
+% dir_out_PR_images = ['..' filesep 'summary' filesep 'PR' filesep 'images' filesep];
+% dir_out_PR_graphs = ['..' filesep 'summary' filesep 'PR' filesep 'graphs' filesep];
+% dir_out_PR_fig = ['..' filesep 'summary' filesep 'PR' filesep 'fig' filesep];
+% %% set up parameters
+% micron_per_pixel = micron_per_pixel.*DownSample;
+% sk_width = 3;
+% E_width = 1;
+% %% set up default colour map
+% cmap = jet(256);
+% cmap(1,:) = 0;
+% %% initialise main program
+% step = 0;
+% warning off
+% %% Load in the images
+% step = step+1;
+% disp(['Step ' num2str(step) ': Processing ' FolderName])
+% [im,im_cnn,bw_mask,bw_vein,bw_roi,bw_GT] = fnc_load_CNN_images(FolderName,DownSample);
+%% test the performance against the internal ground truth if a ground truth image is present
 if any(bw_GT(:))
     step = step+1;
     disp(['Step ' num2str(step) ': Precision-Recall analysis'])
     dirout = dir_out_PR_images;
-    fout = [dir_out_PR_fig FolderName];
-    PR = fnc_precision_recall(im,im_cnn,bw_mask,bw_vein,bw_roi,bw_GT,DownSample,dirout,fout);
+    PR = fnc_precision_recall(im,im_cnn,bw_mask,bw_vein,bw_roi,bw_GT,DownSample,dirout);
     if ShowFigs == 1
         % display the PR curves for the full-width binary image and the
         % skeleton
-        display_PR(PR, FolderName);
-        display_sk_PR(PR, FolderName);
+        display_PR(PR);
+        display_sk_PR(PR);
     end
     if ExportFigs == 1
         step = step+1;
@@ -45,11 +46,11 @@ if any(bw_GT(:))
         fout = [dir_out_PR_images FolderName '_sk_PR.png'];
         imwrite(PR.images.cnn_sk(:,:,:,PR.evaluation{'cnn_sk','F1_idx'}),fout,'png')
         % save the full-width PR curve
-        hfig1 = display_PR(PR, FolderName);
+        hfig1 = display_PR(PR);
         saveas(hfig1,[dir_out_PR_graphs FolderName '_PRC.png'])
         delete(hfig1);
         % save the PR skeleton curve
-        hfig2 = display_sk_PR(PR, FolderName);
+        hfig2 = display_sk_PR(PR);
         saveas(hfig2,[dir_out_PR_graphs FolderName '_sk_PRC.png'])
         delete(hfig2);
     end
@@ -59,8 +60,8 @@ end
 %% get the skeleton
 step = step+1;
 disp(['Step ' num2str(step) ': Skeleton extraction'])
-if exist('PR','var')
-    % use the threshold value determined from the PR analysis
+if exist('PR','var') && ~isempty(PR)
+    % use the optimum threshold value determined from the PR analysis
     [bw_cnn, sk, skLoop, skTree] = fnc_skeleton(im_cnn,bw_vein,PR.evaluation{'cnn','F1_threshold'});
 else
     % use a standard threshold
@@ -73,23 +74,6 @@ disp(['Step ' num2str(step) ': Calculating width from distance transform'])
 % extract the initial width along the skeleton from the distance transform
 W_pixels = zeros(size(im_distance),'single');
 W_pixels(sk) = single(im_distance(sk).*2);
-% % % %% calculate the width using granulometry
-% % % step = step+1;
-% % % disp(['Step ' num2str(step) ': Calculating width using granulometry'])
-% % % %im_width = fnc_granulometry(imcomplement(mat2gray(im)),DownSample);
-% % % im_width = fnc_granulometry(im_cnn,DownSample);
-% % % W_pixels = zeros(size(im_width),'single');
-% % % W_pixels(sk) = single(im_width(sk).*2);
-% % % %% set up the segmentation figure
-% % % if ShowFigs == 1
-% % %     warning off images:initSize:adjustingMag
-% % %     warning off MATLAB:LargeImage
-% % %     images = {im,im_cnn,bw_mask,imdilate(single(cat(3,skLoop,skTree,skLoop)), ones(3)),im_distance,imdilate(W_pixels, ones(3))};
-% % %     graphs = {'none','none','none','none','none','none'};
-% % %     titles = {'original','CNN','Mask','Skeleton','Distance','Width (pixels)'};
-% % %     display_figure(images,graphs,titles,[],E_width,[1:6],[dir_out_images FolderName 'Segmentation'],ExportFigs);
-% % % end
-
 %% extract network using the thinned skeleton
 step = step+1;
 disp(['Step ' num2str(step) ': Extracting the network'])
@@ -102,11 +86,11 @@ disp(['Step ' num2str(step) ': Resolving self loops'])
 %% resolve duplicate edges by splitting one edge into two
 step = step+1;
 disp(['Step ' num2str(step) ': Resolving duplicates'])
-[edgelist, edgeim] = fnc_resolve_duplicates(edgelist,edgeim);
+[edgelist, ~] = fnc_resolve_duplicates(edgelist,edgeim);
 %% construct the weighted graph
 step = step+1;
 disp(['Step ' num2str(step) ': Weighted graph'])
-[G_veins,edgelist] = fnc_weighted_graph(edgelist,W_pixels,skLoop,skTree);
+[G_veins,edgelist] = fnc_weighted_graph(edgelist,W_pixels,skTree);
 %% Refine the width
 step = step+1;
 disp(['Step ' num2str(step) ': Refining width'])
@@ -118,47 +102,32 @@ disp(['Step ' num2str(step) ': Colour-coded skeleton'])
 %% display the weighted network
 step = step+1;
 disp(['Step ' num2str(step) ': Image display'])
-% % % if ShowFigs == 1
-% % %     warning off images:initSize:adjustingMag
-% % %     warning off MATLAB:LargeImage
-% % %     if exist('PR','var')
-% % %         images = {im_cnn,im_cnn,CW_pixels,coded,PR.images.cnn(:,:,:,PR.evaluation{'cnn','F1_idx'}),PR.images.cnn_sk(:,:,:,PR.evaluation{'cnn_sk','F1_idx'})};
-% % %     else
-% % %         images = {im_cnn,im_cnn,CW_pixels,coded,[],[]};
-% % %     end
-% % %     graphs = {'Width_initial','Width','none','none','none','none'};
-% % %     titles = {'Original width','center-weighted width','width (pixels)','coded','precision-recall full width','precision-recall skeleton'};
-% % %     display_figure(images,graphs,titles,G_veins,E_width,[1:4],[dir_out_images FolderName 'Width'],ExportFigs);
-% % % end
 if ExportFigs == 1
     step = step+1;
     disp(['Step ' num2str(step) ': Saving width images'])
-    [nY,nX,nC] = size(coded);
+    [nY,nX,~] = size(coded);
     % save the color-coded width image
     fout = [dir_out_images FolderName '_width.png'];
     imwrite(coded,fout,'png','Xresolution',nX,'Yresolution',nY)
     % save the greyscale width array as a matlab file. Note outside the
     % masked area is now coded as -1
     save([dir_out_width FolderName '_Width_array'],'im_width')
-%     % save the greyscale width image as a uint8 image
-%     fout = [dir_out_width FolderName '_width_gray.png'];
-%     imwrite(uint8(im_width),fout,'png','Xresolution',nX,'Yresolution',nY)
 end
-% find the areoles
+%% find the areoles
 step = step+1;
 disp(['Step ' num2str(step) ': polygon analysis'])
 % find the polygon and areole areas
 [G_veins, sk_polygon, bw_polygons, bw_areoles, total_area_mask, polygon_LM] = fnc_polygon_find(G_veins,bw_cnn,sk,skLoop,bw_mask);
- [areole_stats,polygon_stats] = fnc_polygon_analysis(bw_polygons,bw_areoles, polygon_LM,FullMetrics);
-% construct color-coded images based on log area
-im_polygons_rgb = fnc_polygon_image(polygon_stats, sk_polygon, total_area_mask);
+[areole_stats,polygon_stats] = fnc_polygon_analysis(bw_polygons,bw_areoles, polygon_LM,FullMetrics);
+% construct color-coded image based on log area for display
 im_areoles_rgb = fnc_polygon_image(areole_stats, sk_polygon, total_area_mask);
-% convert to an areole graph and a polygon graph
+% im_polygons_rgb = fnc_polygon_image(polygon_stats, sk_polygon, total_area_mask);
+%% convert to an areole graph and a polygon graph
 step = step+1;
 disp(['Step ' num2str(step) ': Dual graph'])
 [G_areoles] = fnc_area_graph(G_veins,areole_stats);
 [G_polygons] = fnc_area_graph(G_veins,polygon_stats);
-% collect summary statistics into a results array
+%% collect summary statistics into a results array
 step = step+1;
 disp(['Step ' num2str(step) ': Summary statistics'])
 total_area = sum(bw_mask(:));
@@ -168,7 +137,7 @@ areoles = fnc_summary_areoles(G_areoles,polygon_area,micron_per_pixel,FullMetric
 polygons = fnc_summary_polygons(G_polygons,micron_per_pixel,FullMetrics);
 results = [veins areoles polygons];
 %% add in results for the ROC analysis (if present)
-if exist('PR','var')
+if exist('PR','var') && ~isempty(PR)
     results.PR_threshold = PR.evaluation{'cnn_sk','F1_threshold'};
     results.PR_Precision = PR.results.cnn.Precision(PR.evaluation{'cnn_sk','F1_idx'});
     results.PR_Recall = PR.results.cnn.Recall(PR.evaluation{'cnn_sk','F1_idx'});
@@ -182,45 +151,55 @@ results.MicronPerPixel = micron_per_pixel;
 results.DownSample = DownSample;
 % reorder the table to get the file info first
 results = results(:, [end-3:end 1:end-4]);
-%% save the graphs
+%% save the graphs to matlab
 step = step+1;
 disp(['Step ' num2str(step) ': Saving graphs data'])
 % save the results
 save([dir_out_data FolderName '_Graphs.mat'],'G_veins','G_areoles','G_polygons','results')
+
 %% set up the results figure
-% % % if ShowFigs == 1
-% % %     warning off images:initSize:adjustingMag
-% % %     warning off MATLAB:LargeImage
-% % %     images = {im_polygons_rgb,im_areoles_rgb,im_cnn,[],[],[]};
-% % %     graphs = {'none','none','Width','none','none','none'};
-% % %     titles = {'polygons','areoles','dual graph','none','none','none'};
-% % %     display_figure(images,graphs,titles,G_polygons,E_width,[1:3],[dir_out_images FolderName '_Polygons'],ExportFigs);
-% % % end
-% set up the figure for paper
 if ShowFigs == 1
     warning off images:initSize:adjustingMag
     warning off MATLAB:LargeImage
-    images = {im,max(im_cnn(:))-im_cnn,imdilate(single(cat(3,skLoop,skTree,skLoop)), ones(5)),coded,im_areoles_rgb,max(im_cnn(:))-im_cnn};
+    skel = imerode(single(cat(3,1-skTree,1-skLoop,1-skTree)), ones(5));
+    images = {im,max(im_cnn(:))-im_cnn,skel,coded,im_areoles_rgb,max(im_cnn(:))-im_cnn};
     graphs = {'none','none','none','none','none','Width'};
     titles = {'original','CNN','Skeleton','width','areoles','dual graph'};
     display_figure(images,graphs,titles,G_polygons,E_width,[1:6],[dir_out_images FolderName '_Figure'],ExportFigs);
 end
-
-% Hierarchical loop decomposition
+%% Hierarchical loop decomposition
 step = step+1;
 disp(['Step ' num2str(step) ': Hierarchical loop decomposition'])
-[G_HLD, parent] = fnc_HLD(G_veins, G_polygons, G_areoles, polygon_stats, areole_stats, polygon_LM, bw_polygons, total_area, polygon_area, micron_per_pixel, ShowFigs,FullMetrics);
-% HLD display
-if ShowFigs == 1
-    display_HLD(G_polygons,im_cnn,G_HLD,parent);
+[G_HLD, parent] = fnc_HLD(G_veins, G_polygons, polygon_stats, areole_stats, polygon_LM, bw_polygons, micron_per_pixel);
+save([dir_out_HLD FolderName '_HLD_results.mat'],'G_HLD','parent')
+%% HLD display
+if ShowFigs == 1 && ExportFigs == 0
+    display_HLD(G_polygons,im_cnn,G_HLD,FullLeaf,[dir_out_HLD FolderName '_HLD'],ExportFigs);
 end
 if ExportFigs == 1
-    hfig = display_HLD(G_polygons,im_cnn,G_HLD,parent);
-    saveas(hfig,[dir_out_HLD FolderName '_HLD.png'])
-    delete(hfig);
-    save([dir_out_HLD FolderName '_HLD_results.mat'],'G_HLD','parent')
+    display_HLD(G_polygons,im_cnn,G_HLD,FullLeaf,[dir_out_HLD FolderName '_HLD'],ExportFigs);
+    %     display_HLD_figure(G_polygons,im_cnn,G_HLD,FullLeaf,[dir_out_HLD FolderName '_HLD_2'],ExportFigs);
 end
-end
+%% save results to Excel
+step = step+1;
+disp(['Step ' num2str(step) ': saving results to Excel'])
+% save as excel spreadsheets
+warning('off','MATLAB:xlswrite:AddSheet')
+writetable(G_veins.Edges,[dir_out_data FolderName '_results.xlsx'],'FileType','spreadsheet','WriteVariableNames',1,'Sheet','Vein Edges')
+writetable(G_veins.Nodes,[dir_out_data FolderName '_results.xlsx'],'FileType','spreadsheet','WriteVariableNames',1,'Sheet','Vein Nodes')
+writetable(G_areoles.Edges,[dir_out_data FolderName '_results.xlsx'],'FileType','spreadsheet','WriteVariableNames',1,'Sheet','Areole Edges')
+writetable(G_areoles.Nodes,[dir_out_data FolderName '_results.xlsx'],'FileType','spreadsheet','WriteVariableNames',1,'Sheet','Areole Nodes')
+writetable(G_polygons.Edges,[dir_out_data FolderName '_results.xlsx'],'FileType','spreadsheet','WriteVariableNames',1,'Sheet','Polygon Edges')
+writetable(G_polygons.Nodes,[dir_out_data FolderName '_results.xlsx'],'FileType','spreadsheet','WriteVariableNames',1,'Sheet','Polygon Nodes')
+writetable(G_HLD.Edges,[dir_out_data FolderName '_results.xlsx'],'FileType','spreadsheet','WriteVariableNames',1,'Sheet','HLD Edges')
+writetable(G_HLD.Nodes,[dir_out_data FolderName '_results.xlsx'],'FileType','spreadsheet','WriteVariableNames',1,'Sheet','HLD Nodes')
+% remove the unnecessary default sheets. Note this requires the full path.
+dir_current = pwd;
+cd(dir_out_data);
+dir_in = pwd;
+xls_delete_sheets([dir_in filesep FolderName '_results.xlsx'],{'Sheet1','Sheet2','Sheet3'})
+cd(dir_current);
+%end
 
 function [im,im_cnn,bw_mask,bw_vein,bw_roi,bw_GT] = fnc_load_CNN_images(FolderName,DownSample)
 % get the contents of the directory
@@ -301,7 +280,7 @@ bw_mask = bw_mask & bw_cnn_mask;
 im_cnn(~bw_mask) = 0;
 end
 
-function PR = fnc_precision_recall(im,im_cnn,bw_mask,bw_vein,bw_roi,bw_GT,DownSample,dirout,fout)
+function PR = fnc_precision_recall(im,im_cnn,bw_mask,bw_vein,bw_roi,bw_GT,DownSample,dirout)
 % subsample images for comparison with ground truth
 stats = regionprops(bw_roi,'BoundingBox');
 BB = round(stats.BoundingBox);
@@ -319,12 +298,13 @@ roi_cnn = fnc_enhance_im(roi_cnn,DownSample,'CNN');
 roi_vesselness = fnc_enhance_im(roi_im,DownSample,'Vesselness');
 roi_featuretype = fnc_enhance_im(roi_im,DownSample,'FeatureType');
 roi_bowlerhat = fnc_enhance_im(roi_im,DownSample,'BowlerHat');
-% convert to a full-width binary image
+% set up threshold parameters
 Tmin = 0;
 Tmax = 1;
 nT = 20;
 Tint = (Tmax-Tmin)/(nT);
 T = Tmin:Tint:Tmax-Tint;
+% convert to a full-width binary image
 bw_cnn_roi = fnc_im_to_bw(roi_cnn,roi,roi_vein,roi_mask,T,'hysteresis');
 bw_niblack = fnc_im_to_bw(roi_im,roi,roi_vein,roi_mask,T,'Niblack');
 bw_midgrey = fnc_im_to_bw(roi_im,roi,roi_vein,roi_mask,T,'midgrey');
@@ -343,18 +323,15 @@ bw_bowlerhat = fnc_im_to_bw(roi_bowlerhat,roi,roi_vein,roi_mask,T,'hysteresis');
 [PR.results.featuretype, PR.images.featuretype] = fnc_PRC_bw(roi_GT,bw_featuretype,T);
 [PR.results.bowlerhat, PR.images.bowlerhat] = fnc_PRC_bw(roi_GT,bw_bowlerhat,T);
 % convert to a skeleton
-sk_GT = fnc_im_to_sk(roi_GT,roi_vein,roi,T,'GT');
-sk_cnn = fnc_im_to_sk(roi_cnn,roi_vein,roi,T,'cnn');
-sk_niblack = fnc_im_to_sk(bw_niblack,roi_vein,roi,T,'niblack');
-sk_midgrey = fnc_im_to_sk(bw_midgrey,roi_vein,roi,T,'midgrey');
-sk_bernsen = fnc_im_to_sk(bw_bernsen,roi_vein,roi,T,'bernsen');
-sk_sauvola = fnc_im_to_sk(bw_sauvola,roi_vein,roi,T,'sauvola');
-sk_vesselness = fnc_im_to_sk(roi_vesselness,roi_vein,roi,T,'vesselness');
-sk_featuretype = fnc_im_to_sk(roi_featuretype,roi_vein,roi,T,'featuretype');
-sk_bowlerhat = fnc_im_to_sk(roi_bowlerhat,roi_vein,roi,T,'bowlerhat');
-% get the skeleton using triangulation
-% contourThreshold = 0.5;
-% [xcc, ycc] = sk_by_triangulation(roi_cnn, sk_cnn, contourThreshold);
+[sk_GT, skLoop_GT, skTree_GT] = fnc_im_to_sk(roi_GT,roi_vein,roi,T,'GT');
+[sk_cnn, skLoop_cnn, skTree_cnn] = fnc_im_to_sk(roi_cnn,roi_vein,roi,T,'cnn');
+[sk_niblack, skLoop_niblack, skTree_niblack] = fnc_im_to_sk(bw_niblack,roi_vein,roi,T,'niblack');
+[sk_midgrey, skLoop_midgrey, skTree_midgrey] = fnc_im_to_sk(bw_midgrey,roi_vein,roi,T,'midgrey');
+[sk_bernsen, skLoop_bernsen, skTree_bernsen] = fnc_im_to_sk(bw_bernsen,roi_vein,roi,T,'bernsen');
+[sk_sauvola, skLoop_sauvola, skTree_sauvola] = fnc_im_to_sk(bw_sauvola,roi_vein,roi,T,'sauvola');
+[sk_vesselness, skLoop_vesselness, skTree_vesselness] = fnc_im_to_sk(roi_vesselness,roi_vein,roi,T,'vesselness');
+[sk_featuretype, skLoop_featuretype, skTree_featuretype] = fnc_im_to_sk(roi_featuretype,roi_vein,roi,T,'featuretype');
+[sk_bowlerhat, skLoop_bowlerhat, skTree_bowlerhat] = fnc_im_to_sk(roi_bowlerhat,roi_vein,roi,T,'bowlerhat');
 % compare the skeletons with the skeleton ground truth within a given tolerance (in pixels)
 tolerance = 3;
 [PR.results.cnn_sk,PR.images.cnn_sk] = fnc_PRC_sk(sk_GT,sk_cnn,tolerance,T);
@@ -367,8 +344,29 @@ tolerance = 3;
 [PR.results.sauvola_sk,PR.images.sauvola_sk] = fnc_PRC_sk(sk_GT,sk_sauvola,tolerance,T);
 % get the threshold for the best performance
 PR = fnc_PRC_evaluation(PR,T);
+% get the segmentation index for the optimium threshold
+idx_GT = 1;
+idx_cnn = PR.evaluation{'cnn','F1_idx'};
+idx_niblack = PR.evaluation{'niblack','F1_idx'};
+idx_midgrey = PR.evaluation{'midgrey','F1_idx'};
+idx_bernsen = PR.evaluation{'bernsen','F1_idx'};
+idx_sauvola = PR.evaluation{'sauvola','F1_idx'};
+idx_vesselness = PR.evaluation{'vesselness','F1_idx'};
+idx_featuretype = PR.evaluation{'featuretype','F1_idx'};
+idx_bowlerhat = PR.evaluation{'bowlerhat','F1_idx'};
+% Extract the graph results
+results{1,:} = fnc_PR_graph(sk_GT(:,:,idx_GT),roi_im,roi_cnn,bw_cnn_roi(:,:,idx_GT),roi_mask,skLoop_GT(:,:,1),skTree_GT(:,:,1),0,1);
+results{2,:} = fnc_PR_graph(sk_cnn(:,:,idx_cnn),roi_im,roi_cnn,bw_cnn_roi(:,:,idx_cnn),roi_mask,skLoop_cnn(:,:,idx_cnn),skTree_cnn(:,:,idx_cnn),0,1);
+results{3,:} = fnc_PR_graph(sk_niblack(:,:,idx_niblack),roi_im,roi_cnn,bw_cnn_roi(:,:,idx_niblack),roi_mask,skLoop_niblack(:,:,idx_niblack),skTree_niblack(:,:,idx_niblack),0,1);
+results{4,:} = fnc_PR_graph(sk_midgrey(:,:,idx_midgrey),roi_im,roi_cnn,bw_cnn_roi(:,:,idx_midgrey),roi_mask,skLoop_midgrey(:,:,idx_midgrey),skTree_midgrey(:,:,idx_midgrey),0,1);
+% results{5,:} = fnc_PR_graph(sk_bernsen(:,:,idx_bernsen),roi_im,roi_cnn,bw_cnn_roi(:,:,idx_bernsen),roi_mask,skLoop_bernsen(:,:,idx_bernsen),skTree_bernsen(:,:,idx_bernsen),0,1)
+% results{6,:} = fnc_PR_graph(sk_sauvola(:,:,idx_sauvola),roi_im,roi_cnn,bw_cnn_roi(:,:,idx_sauvola),roi_mask,skLoop_sauvola(:,:,idx_sauvola),skTree_sauvola(:,:,idx_sauvola),0,1)
+results{7,:} = fnc_PR_graph(sk_vesselness(:,:,idx_vesselness),roi_im,roi_cnn,bw_cnn_roi(:,:,idx_vesselness),roi_mask,skLoop_vesselness(:,:,idx_vesselness),skTree_vesselness(:,:,idx_vesselness),0,1);
+results{8,:} = fnc_PR_graph(sk_featuretype(:,:,idx_featuretype),roi_im,roi_cnn,bw_cnn_roi(:,:,idx_featuretype),roi_mask,skLoop_featuretype(:,:,idx_featuretype),skTree_featuretype(:,:,idx_featuretype),0,1);
+results{9,:} = fnc_PR_graph(sk_bowlerhat(:,:,idx_bowlerhat),roi_im,roi_cnn,bw_cnn_roi(:,:,idx_bowlerhat),roi_mask,skLoop_bowlerhat(:,:,idx_bowlerhat),skTree_bowlerhat(:,:,idx_bowlerhat),0,1);
+assignin('base','results_PR',results)
 % display the figure
-hfig = figure;
+hfig = figure('Renderer','painters');
 % set up the axes to fill the figure
 for ia = 1:18
     ax(ia) = subplot(3,6,ia);
@@ -438,7 +436,7 @@ for iP = 1:5
     axis off
     export_fig([dirout methods{iP}],'-png',ax(iP+13))
 end
-
+% tidy up the axes
 for ia = 1:18
     axes(ax(ia))
     ax(ia).XTick = [];
@@ -456,12 +454,12 @@ for ia = 1:18
         ax(ia).YLabel.String = 'skeleton';
     end
 end
-
+% save as an image
 export_fig([dirout 'all'],'-native','-png')
 linkaxes
 drawnow
 % saveas(hfig,[fout '_PRall.fig'])
-delete(hfig)
+% delete(hfig)
 end
 
 function im_out = fnc_enhance_im(im_in,DownSample,method)
@@ -615,10 +613,12 @@ for iT = 1:nT
 end
 end
 
-function sk_out = fnc_im_to_sk(im_in,roi_vein,roi,T,method)
+function [sk_out, sk_Loop, sk_Tree] = fnc_im_to_sk(im_in,roi_vein,roi,T,method)
 % calculate the skeleton
 nT = length(T);
 sk_out = false([size(im_in,1) size(im_in,2) nT]);
+sk_Loop = false([size(im_in,1) size(im_in,2) nT]);
+sk_Tree = false([size(im_in,1) size(im_in,2) nT]);
 im_in = mat2gray(im_in);
 if ~isempty(roi_vein)
     im_in = max(im_in,roi_vein);
@@ -639,6 +639,8 @@ switch method
         sk_out = bwmorph(sk_out,'thin',inf);
         % only keep the largest connected component
         sk_out = bwareafilt(sk_out,1);
+        sk_Loop = bwmorph(sk_out,'spur','inf');
+        sk_Tree = sk_out & ~sk_Loop;
     case {'cnn';'vesselness';'featuretype';'bowlerhat'}
         % apply the threshold during the skeletonisation of the enhanced
         % image
@@ -648,43 +650,9 @@ switch method
     case {'niblack';'midgrey';'bernsen';'sauvola'}
         % use the binary image calculated at different threshold values
         for iT = 1:nT
-            [~, sk_out(:,:,iT),~,~] = fnc_skeleton(im_in(:,:,iT),roi_vein,T(iT));
+            [~, sk_out(:,:,iT),sk_Loop(:,:,iT),sk_Tree(:,:,iT)] = fnc_skeleton(im_in(:,:,iT),roi_vein,T(iT));
         end
 end
-end
-
-function [xcc, ycc] = sk_by_triangulation(im_in, sk_in, contourThreshold)
-% Get an isocontour
-[Lines,Vertices,Objects] = isocontour(im_in,contourThreshold);
-Vertices = fliplr(Vertices); % Get it back in XY from IJ
-% reduce the number of vertices by setting the tolerance to 0.2 degree arc
-[x,y] = reducem(Vertices(:,1),Vertices(:,2),0.2);
-% Triangulate all pts in the isocontour and check which trias are in/out
-dt = delaunayTriangulation(x,y);
-%dt = delaunayTriangulation(x,y);
-fc = dt.incenter;
-inside = interp2(im_in, fc(:,1), fc(:,2))>=contourThreshold;
-% Construct a triangulation to represent the domain triangles.
-tr = triangulation(dt(inside, :), dt.Points);
-% Construct a set of edges that join the circumcenters of neighboring
-% triangles; the additional logic constructs a unique set of such edges.
-numt = size(tr,1);
-T = (1:numt)';
-neigh = tr.neighbors();
-cc = tr.circumcenter();
-xcc = cc(:,1);
-ycc = cc(:,2);
-idx1 = T < neigh(:,1);
-idx2 = T < neigh(:,2);
-idx3 = T < neigh(:,3);
-neigh = [T(idx1) neigh(idx1,1); T(idx2) neigh(idx2,2); T(idx3) neigh(idx3,3)]';
-figure
-imshow(imoverlay(im_in,sk_in(:,:,10),'b'),[])
-hold on
-%clf;
-triplot(tr, 'g');
-hold on
-plot(xcc(neigh), ycc(neigh), '-r', 'LineWidth', 1);
 end
 
 function [PR_results,PR_im] = fnc_PRC_bw(roi_GT,bw_in,T)
@@ -752,15 +720,6 @@ for iT = 1:size(sk_in,3)
     % away from the gold standard
     distance_error = mean(GT_distance(sk_in(:,:,iT)));
     distance_error_SD = std(GT_distance(sk_in(:,:,iT)));
-    %     % calculate true positives present in GT and binary image
-    %     TP = sk_in(:,:,iT) & sk_GT;
-    %     % false positives are in the binary image; but not GT
-    %     FP = sk_in(:,:,iT) & ~sk_GT;
-    %     % false negatives are in the ground truth, but not the
-    % %     % binary image
-    %     FN = sk_GT & ~sk_in(:,:,iT);
-    %     % true negatives are all the pixels that are not in either
-    %     TN = ~sk_GT & ~sk_in(:,:,iT);
     % sum the quantities across the whole image
     STP = sum(TP(:));
     SFP = sum(FP(:));
@@ -807,6 +766,39 @@ for iM = 1:nM
     [PR.evaluation{iM,'FBeta2'}, PR.evaluation{iM,'FBeta2_idx'}] = max(PR.results.(methods{iM}).FBeta2);
     PR.evaluation{iM,'FBeta2_threshold'} = T(PR.evaluation{iM,'FBeta2_idx'});
 end
+end
+
+function results = fnc_PR_graph(sk,im,im_cnn,bw_cnn,bw_mask,skLoop,skTree,FullMetrics,micron_per_pixel)
+%% calculate the width from the distance transform of the binarized cnn image
+[im_distance, ~] = bwdist(~bw_cnn,'Euclidean');
+% extract the initial width along the skeleton from the distance transform
+W_pixels = zeros(size(im_distance),'single');
+W_pixels(sk) = single(im_distance(sk).*2);
+%% extract network using the thinned skeleton
+% collect a cell array of connected edge pixels
+[edgelist, edgeim] = edgelink(sk);
+%% find any self loops and split them
+[edgelist, edgeim] = fnc_resolve_self_loops(edgelist,edgeim);
+%% resolve duplicate edges by splitting one edge into two
+[edgelist, ~] = fnc_resolve_duplicates(edgelist,edgeim);
+%% construct the weighted graph
+[G_veins,edgelist] = fnc_weighted_graph(edgelist,W_pixels,skTree);
+%% Refine the width
+[G_veins,edgelist_center] = fnc_refine_width(G_veins,edgelist,im,im_cnn,W_pixels);
+%% find the areoles
+% find the polygon and areole areas
+[G_veins, sk_polygon, bw_polygons, bw_areoles, total_area_mask, polygon_LM] = fnc_polygon_find(G_veins,bw_cnn,sk,skLoop,bw_mask);
+[areole_stats,polygon_stats] = fnc_polygon_analysis(bw_polygons,bw_areoles, polygon_LM,FullMetrics);
+%% convert to an areole graph and a polygon graph
+[G_areoles] = fnc_area_graph(G_veins,areole_stats);
+[G_polygons] = fnc_area_graph(G_veins,polygon_stats);
+%% collect summary statistics into a results array
+total_area = sum(bw_mask(:));
+polygon_area = sum(G_polygons.Nodes.Area);
+veins = fnc_summary_veins(G_veins,total_area,polygon_area,micron_per_pixel);
+areoles = fnc_summary_areoles(G_areoles,polygon_area,micron_per_pixel,FullMetrics);
+polygons = fnc_summary_polygons(G_polygons,micron_per_pixel,FullMetrics);
+results = [veins areoles polygons];
 end
 
 function [bw_cnn, skfinal, skLoop, skTree] = fnc_skeleton(im_in,bw_vein,threshold)
@@ -901,15 +893,6 @@ end
 skfinal = skTree | skLoop;
 % keep the largest connected component
 skfinal = bwareafilt(skfinal,1);
-end
-
-function [width] = fnc_granulometry(im_cnn,DownSample)
-s = 0:round(90/DownSample);
-imo = zeros([size(im_cnn),length(s)], 'single');
-for i=1:length(s)
-    imo(:,:,i) = imopen(mat2gray(im_cnn),strel('disk',s(i)));
-end
-width = sum(imo,3);
 end
 
 function [edgelist,edgeim] = fnc_resolve_self_loops(edgelist,edgeim)
@@ -1043,7 +1026,7 @@ while ~isempty(D_idx)
 end
 end
 
-function [G_veins,edgelist] = fnc_weighted_graph(edgelist,W_pixels,skLoop,skTree)
+function [G_veins,edgelist] = fnc_weighted_graph(edgelist,W_pixels,skTree)
 [nY,nX] = size(W_pixels);
 % calculate the node indices to account for the edges added and removed
 % I_idx is the linear index to the first pixel in each edge
@@ -1158,21 +1141,12 @@ G_veins.Nodes.node_Maj = single(edge_Maj);
 % get the degree for nodei and nodej
 NDegI = G_veins.Nodes{G_veins.Edges.EndNodes(:,1),'node_Degree'};
 NDegJ = G_veins.Nodes{G_veins.Edges.EndNodes(:,2),'node_Degree'};
-% % %             % get the minimum edge weight for nodei and nodej
-% % %             NMinI = G_veins.Nodes{G_veins.Edges.EndNodes(:,1),'node_Min'};
-% % %             NMinJ = G_veins.Nodes{G_veins.Edges.EndNodes(:,2),'node_Min'};
 % get the maximum edge weight for nodei and nodej
 NMajI = G_veins.Nodes{G_veins.Edges.EndNodes(:,1),'node_Maj'};
 NMajJ = G_veins.Nodes{G_veins.Edges.EndNodes(:,2),'node_Maj'};
 % Get the penultimate edge weight for nodei and nodej
 NMidI = G_veins.Nodes{G_veins.Edges.EndNodes(:,1),'node_Mid'};
 NMidJ = G_veins.Nodes{G_veins.Edges.EndNodes(:,2),'node_Mid'};
-% % %             % Get the average edge weight for nodei and nodej
-% % %             NAveI = G_veins.Nodes{G_veins.Edges.EndNodes(:,1),'node_Average'};
-% % %             NAveJ = G_veins.Nodes{G_veins.Edges.EndNodes(:,2),'node_Average'};
-% % %             % test whether nodei and nodej are perimeter nodes
-% % %             NPerimI = contains(G_veins.Nodes{G_veins.Edges.EndNodes(:,1),'node_Type'},'P');
-% % %             NPerimJ = contains(G_veins.Nodes{G_veins.Edges.EndNodes(:,2),'node_Type'},'P');
 % Get the number of pixels in the edge
 N_pix = G_veins.Edges.N_pix;
 % Get the length as the difference in euclidean distance between pixels
@@ -1422,9 +1396,6 @@ coded = imoverlay(coded,bwperim(bw_mask),'m');
 P_idx = cellfun(@(x) sub2ind([nY nX],x(:,1),x(:,2)),edgelist(E_idx),'UniformOutput',0);
 % concatenate all the pixels indices to give a single vector
 P_all = cat(1,P_idx{:});
-% % calculate an edge width skeleton based on the central width
-% % for the selected edges
-% V_int = num2cell(E);
 % duplicate the value for the number of pixels in each edge
 V_idx = cellfun(@(x,y) repmat(y,length(x),1), P_idx, V_int','UniformOutput',0);
 % concatenate all the values into a single vector
@@ -1524,39 +1495,39 @@ if FullMetrics == 0
     % don't calculate the most time consuming metrics (ConvexArea,
     % Solidity) and the internal distance metrics.
     polygon_stats = regionprops(polygon_LM, ...
-    'Area', ...
-    'Centroid', ...
-    'Eccentricity', ...
-    'EquivDiameter', ...
-    'MajorAxisLength', ...
-    'MinorAxisLength', ...
-    'Orientation', ...
-    'Perimeter', ...
-    'PixelIdxList');
+        'Area', ...
+        'Centroid', ...
+        'Eccentricity', ...
+        'EquivDiameter', ...
+        'MajorAxisLength', ...
+        'MinorAxisLength', ...
+        'Orientation', ...
+        'Perimeter', ...
+        'PixelIdxList');
 else
-P_stats = regionprops(polygon_LM, ...
-    'Area', ...
-    'Centroid', ...
-    'ConvexArea', ...
-    'Eccentricity', ...
-    'EquivDiameter', ...
-    'MajorAxisLength', ...
-    'MinorAxisLength', ...
-    'Orientation', ...
-    'Perimeter', ...
-    'Solidity', ...
-    'PixelIdxList');
-% get the maximum distance to the skeleton for each area
-D_stats = regionprops(polygon_LM,bwdist(~bw_polygons),'MaxIntensity','MeanIntensity');
-% rename the fields
-[D_stats.('MaxDistance')] = D_stats.('MaxIntensity');
-D_stats = rmfield(D_stats,'MaxIntensity');
-% get the average distance to the skeleton for each area
-[D_stats.('MeanDistance')] = D_stats.('MeanIntensity');
-D_stats = rmfield(D_stats,'MeanIntensity');
-names = [fieldnames(P_stats); fieldnames(D_stats)];
-% combine the two stats arrays
-polygon_stats = cell2struct([struct2cell(P_stats);struct2cell(D_stats)],names,1);
+    P_stats = regionprops(polygon_LM, ...
+        'Area', ...
+        'Centroid', ...
+        'ConvexArea', ...
+        'Eccentricity', ...
+        'EquivDiameter', ...
+        'MajorAxisLength', ...
+        'MinorAxisLength', ...
+        'Orientation', ...
+        'Perimeter', ...
+        'Solidity', ...
+        'PixelIdxList');
+    % get the maximum distance to the skeleton for each area
+    D_stats = regionprops(polygon_LM,bwdist(~bw_polygons),'MaxIntensity','MeanIntensity');
+    % rename the fields
+    [D_stats.('MaxDistance')] = D_stats.('MaxIntensity');
+    D_stats = rmfield(D_stats,'MaxIntensity');
+    % get the average distance to the skeleton for each area
+    [D_stats.('MeanDistance')] = D_stats.('MeanIntensity');
+    D_stats = rmfield(D_stats,'MeanIntensity');
+    names = [fieldnames(P_stats); fieldnames(D_stats)];
+    % combine the two stats arrays
+    polygon_stats = cell2struct([struct2cell(P_stats);struct2cell(D_stats)],names,1);
 end
 % calculate additional parameters
 % polygon_stats = P_stats;
@@ -1576,51 +1547,50 @@ areole_LM(~bw_areoles) = 0;
 if FullMetrics == 0
     % don't calculate the most time consuming metrics (ConvexArea,
     % Solidity) and don't calculate the internal distance measures
-areole_stats = regionprops(areole_LM, ...
-    'Area', ...
-    'Centroid', ...
-    'Eccentricity', ...
-    'EquivDiameter', ...
-    'MajorAxisLength', ...
-    'MinorAxisLength', ...
-    'Orientation', ...
-    'Perimeter', ...
-    'PixelIdxList');
+    areole_stats = regionprops(areole_LM, ...
+        'Area', ...
+        'Centroid', ...
+        'Eccentricity', ...
+        'EquivDiameter', ...
+        'MajorAxisLength', ...
+        'MinorAxisLength', ...
+        'Orientation', ...
+        'Perimeter', ...
+        'PixelIdxList');
 else
     A_stats = regionprops(areole_LM, ...
-    'Area', ...
-    'Centroid', ...
-    'ConvexArea', ...
-    'Eccentricity', ...
-    'EquivDiameter', ...
-    'MajorAxisLength', ...
-    'MinorAxisLength', ...
-    'Orientation', ...
-    'Perimeter', ...
-    'Solidity', ...
-    'PixelIdxList');
-% get the maximum distance to the skeleton for each area
-D_stats = regionprops(areole_LM,bwdist(~bw_areoles),'MaxIntensity','MeanIntensity');
-% find any empty cells in the maxIntensity and replace with nan. These
-% occur when an area is present in the polygons, but without a
-% corresponding areole. This ensures that the metric is saved as a number
-% rather than a cell array
-test4empty = cellfun(@isempty,{D_stats.MaxIntensity});
-if any(test4empty)
-    [D_stats(test4empty).MaxIntensity] = deal(nan);
-end
-% rename the fields
-[D_stats.('MaxDistance')] = D_stats.('MaxIntensity');
-D_stats = rmfield(D_stats,'MaxIntensity');
-% get the average distance to the skeleton for each area
-[D_stats.('MeanDistance')] = D_stats.('MeanIntensity');
-D_stats = rmfield(D_stats,'MeanIntensity');
-names = [fieldnames(A_stats); fieldnames(D_stats)];
-% combine the two stats arrays
-areole_stats = cell2struct([struct2cell(A_stats);struct2cell(D_stats)],names,1);
+        'Area', ...
+        'Centroid', ...
+        'ConvexArea', ...
+        'Eccentricity', ...
+        'EquivDiameter', ...
+        'MajorAxisLength', ...
+        'MinorAxisLength', ...
+        'Orientation', ...
+        'Perimeter', ...
+        'Solidity', ...
+        'PixelIdxList');
+    % get the maximum distance to the skeleton for each area
+    D_stats = regionprops(areole_LM,bwdist(~bw_areoles),'MaxIntensity','MeanIntensity');
+    % find any empty cells in the maxIntensity and replace with nan. These
+    % occur when an area is present in the polygons, but without a
+    % corresponding areole. This ensures that the metric is saved as a number
+    % rather than a cell array
+    test4empty = cellfun(@isempty,{D_stats.MaxIntensity});
+    if any(test4empty)
+        [D_stats(test4empty).MaxIntensity] = deal(nan);
+    end
+    % rename the fields
+    [D_stats.('MaxDistance')] = D_stats.('MaxIntensity');
+    D_stats = rmfield(D_stats,'MaxIntensity');
+    % get the average distance to the skeleton for each area
+    [D_stats.('MeanDistance')] = D_stats.('MeanIntensity');
+    D_stats = rmfield(D_stats,'MeanIntensity');
+    names = [fieldnames(A_stats); fieldnames(D_stats)];
+    % combine the two stats arrays
+    areole_stats = cell2struct([struct2cell(A_stats);struct2cell(D_stats)],names,1);
 end
 % calculate additional parameters
-% areole_stats = A_stats;
 ID = num2cell(1:length(areole_stats));
 Circularity = num2cell((4.*pi.*[areole_stats.Area])./([areole_stats.Perimeter].^2));
 Elongation = num2cell([areole_stats.MajorAxisLength]./[areole_stats.MinorAxisLength]);
@@ -1699,9 +1669,6 @@ T.VLoopW = (1/T.VLoopL).*(sum(G_veins.Edges.Length(L_idx).*G_veins.Edges.Width(L
 T.VTreeW = (1/T.VTreeL).*(sum(G_veins.Edges.Length(T_idx).*G_veins.Edges.Width(T_idx))).*mm;
 % set the graph weight to be the length (in microns);
 G_veins.Edges.Weight = G_veins.Edges.Length.*mm;
-% % calculate the minimum spanning tree using Kruskal's algorithm
-% MST = minspantree(G_veins,'method','sparse');
-% T.VMSTratio = sum(MST.Edges.Weight)/T.VTotL;
 % total areas analysed
 T.TotA = total_area.*(mm.^2);
 T.TotPA = polygon_area.*(mm.^2);
@@ -1714,7 +1681,7 @@ T.VLoopVD = T.VLoopV / T.TotA;
 T.VTreeVD = T.VTreeV / T.TotA;
 T.VNND = T.VNN / T.TotA;
 % get the summary statistics for all relevant edge metrics in the table
-% T = fnc_summary(T,metric,prefix,suffix,transform,units)
+% usage: T = fnc_summary(T,metric,prefix,suffix,transform,units)
 T = fnc_summary(T,G_veins.Edges.Length(E_idx),'VTot','Len','none',mm);
 T = fnc_summary(T,G_veins.Edges.Length(L_idx),'VLoop','Len','none',mm);
 T = fnc_summary(T,G_veins.Edges.Length(T_idx),'VTree','Len','none',mm);
@@ -1740,76 +1707,6 @@ T = fnc_summary(T,G_veins.Nodes.node_Omin_Omaj,'N','Anx','circ',1);
 T = fnc_summary(T,G_veins.Nodes.node_Omid_Omaj,'N','Adx','circ',1);
 end
 
-function T = fnc_summary_veins_HLD(G_veins,total_area,polygon_area,micron_per_pixel)
-% set calibration factors
-mm = micron_per_pixel./1000;
-% get the index for all edges, loops and trees
-E_idx = find(contains(G_veins.Edges.Type,'E'));
-L_idx = find(contains(G_veins.Edges.Type,'L'));
-T_idx = find(contains(G_veins.Edges.Type,'T'));
-% get vein and node numbers
-T = table;
-T.VNE = numedges(G_veins); % dimensionless
-T.VNN = numnodes(G_veins); % dimensionless
-%Deg = degree(G_veins); % dimensionless
-%T.VFE = sum(Deg==1); % freely ending veins have degree one
-%T.VFEratio = T.VFE / T.VNE; % Number of FEV divided by number of edges
-%T.Valpha = (T.VNE - T.VNN + 1)/((2*T.VNN)-5); % dimensionless
-% get the total length of veins (in mm)
-T.VTotL = sum(G_veins.Edges.Length(E_idx)).*mm; %
-%T.VLoopL = sum(G_veins.Edges.Length(L_idx)).*mm; %
-%T.VTreeL = sum(G_veins.Edges.Length(T_idx)).*mm; %
-% get the total volume of the veins
-T.VTotV = sum(G_veins.Edges.Volume(E_idx)).*(mm.^3); %
-%T.VLoopV = sum(G_veins.Edges.Volume(L_idx)).*(mm.^3); %
-%T.VTreeV = sum(G_veins.Edges.Volume(T_idx)).*(mm.^3); %
-% get the weighted vein width
-T.VTotW = (1/T.VTotL).*(sum(G_veins.Edges.Length(E_idx).*G_veins.Edges.Width(E_idx))).*mm;
-%T.VLoopW = (1/T.VLoopL).*(sum(G_veins.Edges.Length(L_idx).*G_veins.Edges.Width(L_idx))).*mm;
-%T.VTreeW = (1/T.VTreeL).*(sum(G_veins.Edges.Length(T_idx).*G_veins.Edges.Width(T_idx))).*mm;
-% set the graph weight to be the length (in microns);
-G_veins.Edges.Weight = G_veins.Edges.Length.*mm;
-% % calculate the minimum spanning tree using Kruskal's algorithm
-% MST = minspantree(G_veins,'method','sparse');
-% T.VMSTratio = sum(MST.Edges.Weight)/T.VTotL;
-% total areas analysed
-T.TotA = total_area.*(mm.^2);
-T.TotPA = polygon_area.*(mm.^2);
-% get the density measurements
-T.VTotLD = T.VTotL / T.TotA;
-%T.VLoopLD = T.VLoopL / T.TotA;
-%T.VTreeLD = T.VTreeL / T.TotA;
-T.VTotVD = T.VTotV / T.TotA;
-%T.VLoopVD = T.VLoopV / T.TotA;
-%T.VTreeVD = T.VTreeV / T.TotA;
-T.VNND = T.VNN / T.TotA;
-% get the summary statistics for all relevant edge metrics in the table
-% T = fnc_summary(T,metric,prefix,suffix,transform,units)
-T = fnc_summary(T,G_veins.Edges.Length(E_idx),'VTot','Len','none',mm);
-%T = fnc_summary(T,G_veins.Edges.Length(L_idx),'VLoop','Len','none',mm);
-%T = fnc_summary(T,G_veins.Edges.Length(T_idx),'VTree','Len','none',mm);
-T = fnc_summary(T,G_veins.Edges.Width(E_idx),'VTot','Wid','none',mm);
-%T = fnc_summary(T,G_veins.Edges.Width(L_idx),'VLoop','Wid','none',mm);
-%T = fnc_summary(T,G_veins.Edges.Width(T_idx),'VTree','Wid','none',mm);
-T = fnc_summary(T,G_veins.Edges.SurfaceArea(E_idx),'VTot','SAr','none',mm);
-%T = fnc_summary(T,G_veins.Edges.SurfaceArea(L_idx),'VLoop','SAr','none',mm);
-%T = fnc_summary(T,G_veins.Edges.SurfaceArea(T_idx),'VTree','SAr','none',mm);
-T = fnc_summary(T,G_veins.Edges.Volume(E_idx),'VTot','Vol','none',mm^3);
-%T = fnc_summary(T,G_veins.Edges.Volume(L_idx),'VLoop','Vol','none',mm^3);
-%T = fnc_summary(T,G_veins.Edges.Volume(T_idx),'VTree','Vol','none',mm^3);
-T = fnc_summary(T,G_veins.Edges.Tortuosity(E_idx),'V','Tor','none',1);
-T = fnc_summary(T,G_veins.Edges.Or_ij(E_idx),'V','Ori','circ',1);
-% T = fnc_summary(T,G_veins.Nodes.node_Min,'N','Bmn','none',1);
-% T = fnc_summary(T,G_veins.Nodes.node_Mid,'N','Bmd','none',1);
-% T = fnc_summary(T,G_veins.Nodes.node_Maj,'N','Bmx','none',1);
-% T = fnc_summary(T,G_veins.Nodes.node_Min_Mid,'N','Rnd','none',1);
-% T = fnc_summary(T,G_veins.Nodes.node_Min_Maj,'N','Rnx','none',1);
-% T = fnc_summary(T,G_veins.Nodes.node_Mid_Maj,'N','Rdx','none',1);
-% T = fnc_summary(T,G_veins.Nodes.node_Omin_Omid,'N','And','circ',1);
-% T = fnc_summary(T,G_veins.Nodes.node_Omin_Omaj,'N','Anx','circ',1);
-% T = fnc_summary(T,G_veins.Nodes.node_Omid_Omaj,'N','Adx','circ',1);
-end
-
 function T = fnc_summary_areoles(G_areoles,polygon_area,micron_per_pixel,FullMetrics)
 % set calibration factors
 mm = micron_per_pixel./1000;
@@ -1829,12 +1726,12 @@ T = fnc_summary(T,G_areoles.Nodes.Elongation,'A','Elg','none',1);
 T = fnc_summary(T,G_areoles.Nodes.Circularity,'A','Cir','none',1);
 T = fnc_summary(T,G_areoles.Nodes.Roughness,'A','Rgh','none',1);
 T = fnc_summary(T,G_areoles.Nodes.Orientation,'A','Ori','circ',1);
-
+% add in additional metrics if required
 if FullMetrics == 1
     T = fnc_summary(T,G_areoles.Nodes.ConvexArea,'A','CnA','none',mm^2);
     T = fnc_summary(T,G_areoles.Nodes.Solidity,'A','Sld','none',mm);
     T = fnc_summary(T,G_areoles.Nodes.MeanDistance,'A','Dav','none',1);
-T = fnc_summary(T,G_areoles.Nodes.MaxDistance,'A','Dmx','none',1);
+    T = fnc_summary(T,G_areoles.Nodes.MaxDistance,'A','Dmx','none',1);
 end
 end
 
@@ -1856,63 +1753,12 @@ T = fnc_summary(T,G_polygons.Nodes.Elongation,'P','Elg','none',1);
 T = fnc_summary(T,G_polygons.Nodes.Circularity,'P','Cir','none',1);
 T = fnc_summary(T,G_polygons.Nodes.Roughness,'P','Rgh','none',1);
 T = fnc_summary(T,G_polygons.Nodes.Orientation,'P','Ori','circ',1);
+% add in additional metrics if required
 if FullMetrics == 1
     T = fnc_summary(T,G_polygons.Nodes.ConvexArea,'P','CnA','none',mm^2);
-T = fnc_summary(T,G_polygons.Nodes.Solidity,'P','Sld','none',mm);
-T = fnc_summary(T,G_polygons.Nodes.MeanDistance,'P','Dav','none',1);
-T = fnc_summary(T,G_polygons.Nodes.MaxDistance,'P','Dmx','none',1);
-end
-end
-
-function T = fnc_summary_polygon_stats(polygon_stats,micron_per_pixel,FullMetrics)
-% set calibration factors
-mm = micron_per_pixel./1000;
-T = table;
-T.PTA = sum([polygon_stats.Area]).*(mm.^2);
-T.PNN = size(polygon_stats,1);
-T.Ploop = T.PNN / T.PTA; % should be the same as T.Aloop
-% get polgonal area statistics
-T = fnc_summary(T,[polygon_stats.Area],'P','Are','none',mm^2);
-T = fnc_summary(T,[polygon_stats.Eccentricity],'P','Ecc','none',1);
-T = fnc_summary(T,[polygon_stats.MajorAxisLength],'P','Maj','none',mm);
-T = fnc_summary(T,[polygon_stats.MinorAxisLength],'P','Min','none',mm);
-T = fnc_summary(T,[polygon_stats.EquivDiameter],'P','EqD','none',mm);
-T = fnc_summary(T,[polygon_stats.Perimeter],'P','Per','none',mm);
-T = fnc_summary(T,[polygon_stats.Elongation],'P','Elg','none',1);
-T = fnc_summary(T,[polygon_stats.Circularity],'P','Cir','none',1);
-T = fnc_summary(T,[polygon_stats.Roughness],'P','Rgh','none',1);
-T = fnc_summary(T,[polygon_stats.Orientation]','P','Ori','circ',1);
-if FullMetrics == 1
-    T = fnc_summary(T,[polygon_stats.ConvexArea],'P','CnA','none',mm^2);
-T = fnc_summary(T,[polygon_stats.Solidity],'P','Sld','none',mm);
-T = fnc_summary(T,[polygon_stats.MeanDistance],'P','Dav','none',1);
-T = fnc_summary(T,[polygon_stats.MaxDistance],'P','Dmx','none',1);
-end
-end
-
-function T = fnc_summary_areole_stats(areole_stats,polygon_area,micron_per_pixel,FullMetrics)
-% set calibration factors
-mm = micron_per_pixel./1000;
-T = table;
-T.ATA = sum([areole_stats.Area]).*(mm.^2);
-T.ANN = size(areole_stats,1);
-T.Aloop = T.ANN / polygon_area; % should be the same as T.Ploop
-% get areole statistics
-T = fnc_summary(T,[areole_stats.Area],'A','Are','none',mm^2);
-T = fnc_summary(T,[areole_stats.Eccentricity],'A','Ecc','none',1);
-T = fnc_summary(T,[areole_stats.MajorAxisLength],'A','Maj','none',mm);
-T = fnc_summary(T,[areole_stats.MinorAxisLength],'A','Min','none',mm);
-T = fnc_summary(T,[areole_stats.EquivDiameter],'A','EqD','none',mm);
-T = fnc_summary(T,[areole_stats.Perimeter],'A','Per','none',mm);
-T = fnc_summary(T,[areole_stats.Elongation],'A','Elg','none',1);
-T = fnc_summary(T,[areole_stats.Circularity],'A','Cir','none',1);
-T = fnc_summary(T,[areole_stats.Roughness],'A','Rgh','none',1);
-T = fnc_summary(T,[areole_stats.Orientation]','A','Ori','circ',1);
-if FullMetrics == 1
-T = fnc_summary(T,[areole_stats.ConvexArea],'A','CnA','none',mm^2);
-T = fnc_summary(T,[areole_stats.Solidity],'A','Sld','none',mm);
-T = fnc_summary(T,[areole_stats.MeanDistance],'A','Dav','none',1);
-T = fnc_summary(T,[areole_stats.MaxDistance],'A','Dmx','none',1);
+    T = fnc_summary(T,G_polygons.Nodes.Solidity,'P','Sld','none',mm);
+    T = fnc_summary(T,G_polygons.Nodes.MeanDistance,'P','Dav','none',1);
+    T = fnc_summary(T,G_polygons.Nodes.MaxDistance,'P','Dmx','none',1);
 end
 end
 
@@ -1926,13 +1772,14 @@ switch transform
     case 'inverse'
         metric = 1./metric;
 end
-% use circular stats
+% calculate summary statistic. Note: uncomment lines to add metrics
 switch transform
     case 'circ'
+        % use circular stats
         warning off
         T.([prefix 'av' suffix]) = circ_rad2ang(circ_mean(metric));
-        %T.([prefix 'md' suffix]) = circ_rad2ang(circ_median(metric)); %
-        % don't calculate the median as the intermediate array size is Ne x NE
+        %         don't calculate the median as the intermediate array size is Ne x NE
+        %         T.([prefix 'md' suffix]) = circ_rad2ang(circ_median(metric)); %
         %         T.([prefix 'mn' suffix]) = circ_rad2ang(min(metric));
         %         T.([prefix 'mx' suffix]) = circ_rad2ang(max(metric));
         T.([prefix 'sd' suffix]) = circ_rad2ang(circ_std(metric));
@@ -1941,7 +1788,7 @@ switch transform
     otherwise
         T.([prefix 'av' suffix]) = mean(metric).*units;
         T.([prefix 'md' suffix]) = median(metric).*units;
-        %T.([prefix 'mo' suffix]) = mode(metric).*units;
+        %         T.([prefix 'mo' suffix]) = mode(metric).*units;
         %         T.([prefix 'mn' suffix]) = min(metric).*units;
         %         T.([prefix 'mx' suffix]) = max(metric).*units;
         T.([prefix 'sd' suffix]) = std(metric).*units;
@@ -1949,7 +1796,7 @@ switch transform
 end
 end
 
-function [G_HLD, parent] = fnc_HLD(G_veins, G_polygons, G_areoles, polygon_stats, areole_stats, polygon_LM, bw_polygons, total_area,polygon_area,micron_per_pixel,ShowFigs,FullMetrics)
+function [G_HLD, parent] = fnc_HLD(G_veins, G_polygons, polygon_stats, areole_stats, polygon_LM, bw_polygons, micron_per_pixel)
 % set calibration factors
 mm = micron_per_pixel./1000;
 % construct a binary polygon CC object
@@ -1961,11 +1808,12 @@ PCC.PixelIdxList = {};
 boundary = polygon_LM==0;
 boundary = bwareafilt(boundary,[200 inf]);
 boundary = imdilate(boundary,ones(3));
-% boundary = imdilate(~imclose(polygon_LM, ones(3)),ones(3));
 [r,c] = find(boundary);
 B_polygons = bwselect(bw_polygons,c,r,4);
 Bidx = unique(polygon_LM(B_polygons));
 Bidx(Bidx==0) = [];
+% add in a boundary flag if touching the boundary
+G_polygons.Nodes.Boundary(:,1) = 0;
 G_polygons.Nodes.Boundary(Bidx,1) = 1;
 % select the largest component of the polygon graph
 CC = conncomp(G_polygons);
@@ -2005,6 +1853,7 @@ node_HS = [ones(nnP,1,'single'); zeros(nnP-1,1,'single')];
 subtree_degree_Asymmetry = zeros((2*nnP)-1,1,'single');
 subtree_area_Asymmetry = zeros((2*nnP)-1,1,'single');
 VTotLen = [repmat(L,nnP,1); zeros(nnP-1,1,'single')];
+VTotVol = [repmat(L,nnP,1); zeros(nnP-1,1,'single')];
 MSTRatio = [repmat(MSTL,nnP,1); zeros(nnP-1,1,'single')];
 % redimension the stat arrays to accomodate all the fused nodes
 areole_stats(nnP.*2-1).Area = 0;
@@ -2059,7 +1908,6 @@ for iE = 1:neP
         area_Asymmetry(Nk,1) = abs(node_Area(Ni)-node_Area(Nj))/max(node_Area(Ni),node_Area(Nj));
         % calculate the subtree asymmetry
         subtree_area_Asymmetry(Nk,1) = (1/(node_Area(Nk)-1))*((area_Asymmetry(Ni)*(node_Area(Ni)-1))+(area_Asymmetry(Nj)*(node_Area(Nj)-1)));
-        
         % Strahler index: keep the larger of the Horton-Strahler indices if they
         % are not equal. If they are equal, increment the HS index by one
         if node_HS(Ni) ~= node_HS(Nj)
@@ -2103,6 +1951,7 @@ for iE = 1:neP
         % calculate the minimum spanning tree using Kruskal's algorithm
         MST = minspantree(G_veins,'method','sparse');
         VTotLen(Nk,1) = sum(G_veins.Edges.Weight);
+        VTotVol(Nk,1) = sum(G_veins.Edges.Volume);
         MSTRatio(Nk,1) = sum(MST.Edges.Weight)/VTotLen(Nk,1);
     else
         % delete the current edge as it lies within areas that are already
@@ -2113,6 +1962,10 @@ end
 % complete links to the root node
 parent(end+1) = Nk+1;
 parent = double(fliplr(max(parent(:)) - parent));
+% calculate additional metrics
+Circularity = (4.*pi.*[P_stats.Area])./([P_stats.Perimeter].^2);
+Elongation = [P_stats.MajorAxisLength]./[P_stats.MinorAxisLength];
+Roughness = ([P_stats.Perimeter].^2)./[P_stats.Area];
 % assemble the HLD graph object
 NodeTable = table((1:(2*nnP)-1)', width_threshold.*mm, ...
     node_Area.*(mm^2), ...
@@ -2127,12 +1980,16 @@ NodeTable = table((1:(2*nnP)-1)', width_threshold.*mm, ...
     [P_stats.MinorAxisLength].*mm, ...
     [P_stats.Eccentricity], ...
     [P_stats.Orientation], ...
+    Circularity, ...
+    Elongation, ...
+    Roughness, ...
     VTotLen.*mm, ...
+    VTotVol.*mm^3, ...
     MSTRatio, ...
     node_Boundary, ...
     'VariableNames',{'node_ID', 'width_threshold', 'node_Area', 'node_Degree', ...
     'degree_Asymmetry',  'subtree_degree_Asymmetry', 'area_Asymmetry',  'subtree_area_Asymmetry', ...
-    'node_HS','Perimeter','MajorAxisLength', 'MinorAxisLength', 'Eccentricity','Orientation','VTotLen','MSTRatio','Boundary'});
+    'node_HS','Perimeter','MajorAxisLength', 'MinorAxisLength', 'Eccentricity','Orientation','Circularity','Elongation','Roughness','VTotLen','VTotVol','MSTRatio','Boundary'});
 idx = NodeTable.node_Area == 0;
 NodeTable(idx,:) = [];
 EdgeTable = table(EndNodes, ...
@@ -2145,38 +2002,35 @@ EdgeTable(idx,:) = [];
 G_HLD = graph(EdgeTable, NodeTable);
 end
 
-function hfig = display_PR(PR, FolderName)
+function hfig = display_PR(PR)
 methods = {'cnn';'vesselness';'featuretype';'bowlerhat';'midgrey'};%;'niblack';'bernsen';'sauvola'};
 cols = {'r-';'g-';'b-';'c-';'m-';'g:';'b:';'c:'};
 pnts = {'ro';'go';'bo';'co';'mo';'g*';'b*';'c*'};
 mrks = {'.';'.';'.';'.';'.';'.';'.';'.'};
-
 % plot the precision-recall plots and mark the optimum
-hfig = figure;
+hfig = figure('Renderer','painters');
 hfig.Color = 'w';
 for iP = 1:numel(methods)
     h(iP) = plot(PR.results.(methods{iP}).Recall,PR.results.(methods{iP}).Precision,cols{iP},'Marker',mrks{iP});
     hold on
     plot(PR.results.(methods{iP}).Recall(PR.evaluation{methods{iP},'F1_idx'}),PR.results.(methods{iP}).Precision(PR.evaluation{methods{iP},'F1_idx'}),pnts{iP})
 end
-
 xlabel('Recall')
 ylabel('Precision')
 ax = gca;
 ax.FontUnits = 'points';
 ax.FontSize = 14;
 legend(h,methods,'Location','SouthWest')
-%title([FolderName ' : Precision-Recall  full-width images'])
 drawnow
 end
 
-function hfig = display_sk_PR(PR, FolderName)
+function hfig = display_sk_PR(PR)
 methods = {'cnn_sk';'vesselness_sk';'featuretype_sk';'bowlerhat_sk';'midgrey_sk'};%;'niblack_sk';'bernsen_sk';'sauvola_sk'};
 cols = {'r-';'g-';'b-';'c-';'m-';'g:';'b:';'c:'};
 pnts = {'ro';'go';'bo';'co';'mo:';'go';'bo';'co'};
 mrks = {'.';'.';'.';'.';'.';'.';'.';'.'};
 % plot the precision-recall plots and mark the optimum
-hfig = figure;
+hfig = figure('Renderer','painters');
 hfig.Color = 'w';
 for iP = 1:numel(methods)
     h(iP) = plot(PR.results.(methods{iP}).Recall,PR.results.(methods{iP}).Precision,cols{iP},'Marker',mrks{iP});
@@ -2189,43 +2043,47 @@ ax = gca;
 ax.FontUnits = 'points';
 ax.FontSize = 14;
 legend(h,strrep(methods,'_sk',''),'Location','SouthWest')
-% title([FolderName ' : Precision-Recall skeleton'])
 drawnow
 end
 
 function hfig = display_figure(images,graphs,titles,G,E_width,links,name,ExportFigs)
-hfig = figure;
+hfig = figure('Renderer','painters');
+hfig.Units = 'normalized';
+hfig.Position = [0 0 1 1];
+hfig.Color = 'w';
 inset_sz = 2/5;
 inset_zoom = 6;
 for ia = 1:6
     ax(ia) = subplot(2,3,ia);
     pos = ax(ia).OuterPosition;
+    pos(3) = 0.25;
+    pos(4) = 0.4;
     ax(ia).Position = pos;
     ax(ia+6) = axes('Position', [pos(1)+pos(3)*(1-inset_sz) pos(2)+pos(4)*(1-inset_sz) pos(3)*inset_sz pos(4)*inset_sz]);
 end
-hfig.Units = 'normalized';
-hfig.Position = [0 0 1 1];
-hfig.Color = 'w';
 linkaxes(ax(links),'xy')
-set(gcf,'renderer','painters')
 for ia = 1:6
     axes(ax(ia))
     if ~isempty(images{ia})
-        imshow(images{ia},[]);
+        imshow(images{ia},[],'Border','tight','InitialMagnification','fit');
         h = title(titles{ia},'fontsize',12,'fontweight','normal','interpreter','none');
         h.FontWeight = 'normal';
+        axis on
         ax(ia).XTick = [];
         ax(ia).YTick = [];
+        ax(ia).XColor = 'k';
+        ax(ia).YColor = 'k';
+        ax(ia).LineWidth = 1;
         % display the inset
         axes(ax(ia+6))
         imshow(images{ia},[]);
         zoom(inset_zoom)
-        ax(ia+6).Box = 'on';
-        ax(ia+6).XColor = 'K';
-        ax(ia+6).YColor = 'K';
-        ax(ia+6).LineWidth = 1;
+        axis on
         ax(ia+6).XTick = [];
         ax(ia+6).YTick = [];
+        ax(ia+6).XColor = 'k';
+        ax(ia+6).YColor = 'k';
+        ax(ia+6).LineWidth = 1;
     end
 end
 for ia = 1:6
@@ -2263,12 +2121,12 @@ end
 drawnow
 if ExportFigs
     export_fig(name,'-png','-r300',hfig)
-%     saveas(hfig,name)
+    %     saveas(hfig,name)
 end
 end
 
-function hfig = display_HLD(G_polygons,im_cnn,G_HLD,parent)
-hfig = figure;
+function hfig = display_HLD(G_polygons,im_cnn,G_HLD,FullLeaf,name,ExportFigs)
+hfig = figure('Renderer','painters');
 hfig.Units = 'normalized';
 hfig.Position = [0 0 0.6 1];
 hfig.Color = 'w';
@@ -2277,7 +2135,7 @@ ax(1) = subplot(3,3,4);
 axes(ax(1))
 pos = ax(1).OuterPosition;
 ax(1).Position = pos;
-imshow(im_cnn,[])
+imshow(1-im_cnn,[])
 hold on
 axis off
 box on
@@ -2296,39 +2154,39 @@ xlim([0 numnodes(G_polygons)])
 y = ylim;
 ylim([0 y(2)])
 box on
-
 % display the tree width histogram
 subplot(3,3,5)
 nbins = 50;
-% [TR,D] = shortestpathtree(G_HLD,numnodes(G_HLD),1:numnodes(G_polygons),'OutputForm','cell');
-% h = histogram(G_HLD.Nodes.width_threshold([TR{:}]),nbins)
-% h.FaceColor = 'r';
-% xlabel('width of edge removed')
-% ylabel('freq. of paths traversing edge')
-
 vv = G_HLD.Nodes.width_threshold;
 ww = G_HLD.Nodes.node_Area;
 % get automatic bin limits using the histogram function
-[N,edges] = histcounts(vv,nbins);
+[~,edges] = histcounts(vv,nbins);
 % calculate a weighted histogram
-[histw, histv] = histwv(vv, ww, min(edges), max(edges), nbins);
+[histw, ~] = histwv(vv, ww, min(edges), max(edges), nbins);
 % plot the histogram against the bin centers
 center = edges(2:end)-diff(edges(1:2))./2;
 bar(center(2:end),histw(2:end),'FaceColor',[0.5 0.5 0.5])
 xlabel('width of edge removed')
 ylabel('area weighted freq.')
 box on
-% extract the subgraph for nodes that are not linked to a boundary node
-g1 = subgraph(G_HLD,find(~G_HLD.Nodes.Boundary));
+if FullLeaf == 1
+    last = 1;
+    g1 = G_HLD;
+else
+    % extract the subgraph for nodes that are not linked to a boundary node
+    g1 = subgraph(G_HLD,find(~G_HLD.Nodes.Boundary));
+    % extract the largest five fully connected subgraphs
+    last = 5;
+end
 % order by the largest connected subtree
 cc = conncomp(g1,'OutputForm','cell');
 l = cellfun(@(x) length(x),cc);
 [~,idx] = sort(l,'descend');
 % set up plot options
 cols = repmat({'r','g','b','c','m','y'},1,50);
+width_limits = ([round(min(log(g1.Nodes.width_threshold(g1.Nodes.width_threshold>0)))-0.1,1) round(max(log(g1.Nodes.width_threshold))+0.1,1)]);
 area_limits = ([floor(min(log(g1.Nodes.node_Area))-0.25) ceil(max(log(g1.Nodes.node_Area))+0.25)]);
-% extract the largest five fully connected subgraphs
-for icc = 1:5
+for icc = 1:last
     % extract the HLD subgraph
     g2 = subgraph(g1,cc{idx(icc)});
     % recolor the nodes and edges
@@ -2359,7 +2217,7 @@ for icc = 1:5
     ylabel('bifurcation ratio')
     box on
     
-      % calculate the cumulative size distribution
+    % calculate the cumulative size distribution
     a = sort(g2.Nodes.node_Area,'ascend');
     csN = cumsum(1:numnodes(g2));
     Pa = 1-(csN/max(csN));
@@ -2368,70 +2226,129 @@ for icc = 1:5
     xlabel('log(area)')
     ylabel('log Pa*area')
     xlim(area_limits)
-    ylim([-6 0])
+    %ylim([-6 0])
     hold on
     box on
     
-       % plot the MSTRatio
+    % plot the MSTRatio
     ax(8) = subplot(3,3,8);
-    plot(ax(8),log(g2.Nodes.node_Area), g2.Nodes.MSTRatio,'LineStyle','none','Marker','.','Color',cols{icc})
-%     histogram2(ax(2), g2.Nodes.MSTRatio, log(g2.Nodes.node_Area))
-    xlabel('log(area)')
+    plot(ax(8),log(g2.Nodes.width_threshold), g2.Nodes.MSTRatio,'LineStyle','none','Marker','.','Color',cols{icc})
+    xlabel('log(width)')
     ylabel('MST ratio')
-    xlim(area_limits)
+    xlim(width_limits)
     ylim([0.5 1])
     hold on
     box on
-   
-        % plot the Circularity
+    
+    % plot the Circularity
     ax(9) = subplot(3,3,9);
-    plot(ax(9),log(g2.Nodes.node_Area), 4*pi*g2.Nodes.node_Area./g2.Nodes.Perimeter.^2,'LineStyle','none','Marker','.','Color',cols{icc})
-    xlabel('log(area)')
+    plot(ax(9),log(g2.Nodes.width_threshold), 4*pi*g2.Nodes.node_Area./g2.Nodes.Perimeter.^2,'LineStyle','none','Marker','.','Color',cols{icc})
+    xlabel('log(width)')
     ylabel('circularity')
-    xlim(area_limits)
+    xlim(width_limits)
     ylim([0.2 1])
     hold on
     box on
-%             % plot the Roughness
-%     ax(2) = subplot(3,3,9);
-% %     Circularity = num2cell((4.*pi.*[areole_stats.Area])./([areole_stats.Perimeter].^2));
-% % Elongation = num2cell([areole_stats.MajorAxisLength]./[areole_stats.MinorAxisLength]);
-% % Roughness = num2cell(([areole_stats.Perimeter].^2)./[areole_stats.Area]);
-% 
-%     plot(ax(2),4*pi*g2.Nodes.node_Area./g2.Nodes.Perimeter.^2, g2.Nodes.Perimeter.^2./g2.Nodes.node_Area,'LineStyle','none','Marker','.','Color',cols{icc})
-%     xlabel('log(area)')
-%     ylabel('roughness')
-%      xlim([-6 3])
-%     hold on
-%     box on
+    
+end
+drawnow
+if ExportFigs
+    export_fig(name,'-png','-r300','-painters',hfig)
+    %     saveas(hfig,name)
+end
 end
 
-% % fit curves to overall results
-% fit_MST = fit(double(log(g1.Nodes.node_Area)), double(g1.Nodes.MSTRatio),'poly3');
-% axes(ax(8))
-% hold on
-% plot(fit_MST)
-
+function hfig = display_HLD_figure(G_polygons,im_cnn,G_HLD,FullLeaf,name,ExportFigs)
+hfig = figure('Renderer','painters');
+hfig.Units = 'normalized';
+hfig.Position = [0 0 1 0.5];
+hfig.Color = 'w';
+% set up the subplots
+for ia = 1:3
+    ax(ia) = subplot(1,3,ia);
+    pos = ax(ia).OuterPosition;
+    ax(ia).Position = pos.*[1 1 0.95 1];
+end
+% display the CNN image to overlay the subgraphs
+axes(ax(1))
+imshow(1-im_cnn,[])
+axis on
+ax(1).XTick = [];
+ax(1).YTick = [];
+hold on
+% display the complete treeplot
+subplot(1,3,[2,3])
+h = plot(G_HLD,'Layout','layered','Direction','down','sources',numnodes(G_HLD), ...
+    'AssignLayers','alap','NodeColor','k','Marker','.','EdgeColor','k','LineWidth',1);
+% recolor any nodes connected to the boundary in grey
+SP = shortestpathtree(G_HLD,numnodes(G_HLD),G_HLD.Nodes.node_ID(find(G_HLD.Nodes.Boundary)));
+highlight(h,SP,'NodeColor',[0.5 0.5 0.5],'EdgeColor',[0.5 0.5 0.5],'Marker','*','LineWidth',1)
+ylabel('node level');
+xlabel('terminal node');
+axis tight
+axis on
+xlim([0 numnodes(G_polygons)])
+y = ylim;
+ylim([0 y(2)])
+box on
+if FullLeaf == 1
+    last = 1;
+    g1 = G_HLD;
+else
+    % extract the subgraph for nodes that are not linked to a boundary node
+    g1 = subgraph(G_HLD,find(~G_HLD.Nodes.Boundary));
+    % extract the largest five fully connected subgraphs
+    last = 5;
+end
+% order by the largest connected subtree
+cc = conncomp(g1,'OutputForm','cell');
+l = cellfun(@(x) length(x),cc);
+[~,idx] = sort(l,'descend');
+% set up plot options
+cols = repmat({'r','g','b','c','m','y'},1,50);
+area_limits = ([floor(min(log(g1.Nodes.node_Area))-0.25) ceil(max(log(g1.Nodes.node_Area))+0.25)]);
+% extract the largest five fully connected subgraphs
+for icc = 1:last
+    % extract the HLD subgraph
+    g2 = subgraph(g1,cc{idx(icc)});
+    % recolor the nodes and edges
+    highlight(h,g2.Nodes.node_ID(g2.Edges.EndNodes(:,1)),g2.Nodes.node_ID(g2.Edges.EndNodes(:,2)),'NodeColor',cols{icc},'Marker','o','EdgeColor',cols{icc},'LineWidth',1)
+    % get the node-IDs for the subtree to overlay on the image
+    Gidx = g1.Nodes.node_ID(cc{idx(icc)});
+    % limit the nodes to display to the initial nodes
+    Gidx(Gidx>numnodes(G_polygons)) = [];
+    % extract the subgraph from the original dual-graph that contain the selected nodes
+    g3 = subgraph(G_polygons,Gidx);
+    % display the subgraph on the image
+    plot(ax(1),g3, 'XData',g3.Nodes.node_X_pix,'YData',g3.Nodes.node_Y_pix, ...
+        'NodeColor','g','MarkerSize',1,'Marker', 'none', 'NodeLabel', [], ...
+        'EdgeColor',cols{icc},'EdgeAlpha',1,'EdgeLabel', [],'LineWidth',1);
+end
+drawnow
+if ExportFigs
+    export_fig(name,'-png','-r300','-painters',hfig)
+    %     saveas(hfig,name)
+end
 end
 
 function [histw, histv] = histwv(v, w, min, max, bins)
 % code from Brent
-%Inputs: 
-%vv - values 
-%ww - weights 
-%minV - minimum value 
-%maxV - max value 
-%bins - number of bins (inclusive) 
+%Inputs:
+%vv - values
+%ww - weights
+%minV - minimum value
+%maxV - max value
+%bins - number of bins (inclusive)
 
-%Outputs: 
-%histw - wieghted histogram 
-%histv (optional) - histogram of values 
+%Outputs:
+%histw - weighted histogram
+%histv (optional) - histogram of values
 
-delta = (max-min)/(bins-1); 
-subs = round((v-min)/delta)+1; 
+delta = (max-min)/(bins-1);
+subs = round((v-min)/delta)+1;
 
-histv = accumarray(subs,1,[bins,1]); 
-histw = accumarray(subs,w,[bins,1]); 
+histv = accumarray(subs,1,[bins,1]);
+histw = accumarray(subs,w,[bins,1]);
 end
 
 
