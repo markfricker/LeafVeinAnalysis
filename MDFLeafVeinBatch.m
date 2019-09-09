@@ -86,7 +86,6 @@ FolderNames = sorted_names(include_idx);
 %% set the start folder
 %start = find(contains(FolderNames,'insert filename'));
 start = 1;
-%% loop through each folder
 for iF = start:numel(FolderNames)
     try
         % change the working directory
@@ -97,12 +96,12 @@ for iF = start:numel(FolderNames)
         cd(dir_out_summary)
         % save the results to a single file
         if iF == 1
-            writetable(results,'results.xlsx','FileType','Spreadsheet','Range', 'A1','WriteVariableNames',1)
+            writetable(results,'results.xlsx','FileType','Spreadsheet','Range', 'A1','WriteVariableNames',1,'WriteRowNames',1)
             if isunix
                 fileattrib('results.xlsx', '+w','a')
             end
         else
-            writetable(results,'results.xlsx','FileType','Spreadsheet','Range', ['A' num2str(iF+1)],'WriteVariableNames',0)
+            writetable(results,'results.xlsx','FileType','Spreadsheet','Range', ['A' num2str(((iF-1)*5)+1)],'WriteVariableNames',0,'WriteRowNames',1)
         end
         cd(dir_in);
         disp([FolderNames{iF} ' analysis complete'])
