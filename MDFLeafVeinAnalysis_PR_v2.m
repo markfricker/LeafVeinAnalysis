@@ -48,12 +48,16 @@ PR_methods.evaluation_fw = array2table(zeros(numel(PR_methods.name),6,'single'))
 PR_methods.evaluation_fw.Properties.VariableNames = { ...
     'F1' 'F1_idx' 'F1_threshold' ...
     'FBeta2' 'FBeta2_idx' 'FBeta2_threshold'};
+PR_methods.evaluation_fw.Filename = repelem({FolderName},height(PR_methods.evaluation_fw),1);
+PR_methods.evaluation_fw = PR_methods.evaluation_fw(:,[end, 1:end-1]);
 PR_methods.evaluation_fw.Properties.RowNames = PR_methods.name;
 % set up an evaluation table for the skeleton comparison
 PR_methods.evaluation_sk = array2table(zeros(numel(PR_methods.name),6,'single'));
 PR_methods.evaluation_sk.Properties.VariableNames = { ...
     'F1' 'F1_idx' 'F1_threshold' ...
     'FBeta2' 'FBeta2_idx' 'FBeta2_threshold'};
+PR_methods.evaluation_sk.Filename = repelem({FolderName},height(PR_methods.evaluation_sk),1);
+PR_methods.evaluation_sk = PR_methods.evaluation_sk(:,[end, 1:end-1]);
 PR_methods.evaluation_sk.Properties.RowNames = PR_methods.name;
 %% add in file information to the results file
 results.File = FolderName;
@@ -144,25 +148,42 @@ for iM = 1:sum(PR_methods.select)
     results.F1(idx(iM)+1,:) = results_full(F1_idx_sk,:);
     results.FBeta2(idx(iM)+1,:) = results_full(FBeta2_idx_sk,:);
 end
-%% cacluate the ratio values against the ground truth
+%% calcuate the ratio values against the ground truth
 results.F1_ratio([true PR_methods.select],:) = array2table(log(results.F1{[true PR_methods.select],:}./results.F1{1,:}));
 results.F1_ratio.Properties.VariableNames = results.F1.Properties.VariableNames;
 results.F1_ratio.Properties.RowNames = results.F1.Properties.RowNames;
 results.FBeta2_ratio([true PR_methods.select],:) = array2table(log(results.FBeta2{[true PR_methods.select],:}./results.FBeta2{1,:}));
 results.FBeta2_ratio.Properties.VariableNames = results.FBeta2.Properties.VariableNames;
 results.FBeta2_ratio.Properties.RowNames = results.FBeta2.Properties.RowNames;
-%% save the results
-save([dir_out_PR_results [FolderName '_results']],'results','PR_methods')
 %% display the PR graphs
 hfig = fnc_display_threshold_results(results,PR_methods);
 export_fig([dir_out_PR_graphs FolderName '_PR_threshold'],'-native','-png',hfig)
+delete(hfig)
 hfig = fnc_display_fw_PR(PR_methods);
 export_fig([dir_out_PR_graphs FolderName '_PR_fw_plots'],'-native','-png',hfig)
+delete(hfig)
 hfig = fnc_display_sk_PR(PR_methods);
 export_fig([dir_out_PR_graphs FolderName '_PR_sk_plots'],'-native','-png',hfig)
+delete(hfig)
 %% display the figure
 hfig = fnc_display_images(PR_methods);
 export_fig([dir_out_PR_images FolderName '_PR_images'],'-native','-png',hfig)
+delete(hfig)
+%% add in the file and method indexes
+results.F1.Filename = repelem({FolderName},height(results.F1),1);
+results.F1.Method = results.F1.Properties.RowNames;
+results.F1 = results.F1(:,[end-1:end, 1:end-2]);
+results.F1_ratio.Filename = repelem({FolderName},height(results.F1_ratio),1);
+results.F1_ratio.Method = results.F1_ratio.Properties.RowNames;
+results.F1_ratio = results.F1_ratio(:,[end-1:end, 1:end-2]);
+results.FBeta2.Filename = repelem({FolderName},height(results.FBeta2),1);
+results.FBeta2.Method = results.FBeta2.Properties.RowNames;
+results.Beta2 = results.FBeta2(:,[end-1:end, 1:end-2]);
+results.FBeta2_ratio.Filename = repelem({FolderName},height(results.FBeta2_ratio),1);
+results.FBeta2_ratio.Method = results.FBeta2_ratio.Properties.RowNames;
+results.FBeta2_ratio = results.FBeta2_ratio(:,[end-1:end, 1:end-2]);
+%% save the results
+save([dir_out_PR_results [FolderName '_results']],'results','PR_methods')
 end
 %% all functions
 function [im,im_cnn,bw_mask,bw_vein,bw_roi,bw_GT] = fnc_load_CNN_images(FolderName,DownSample)
@@ -544,30 +565,6 @@ for iT = 1:size(sk_in,3)
 end
 end
 
-% function evaluation = fnc_PRC_evaluation(PR_methods,thresholds)
-% methods = PR_methods.name;
-% nM = numel(methods);
-% evaluation = array2table(zeros(nM,6,'single'));
-% evaluation.Properties.VariableNames = { ...
-%     'F1' 'F1_idx' 'F1_threshold' ...
-%     'FBeta2' 'FBeta2_idx' 'FBeta2_threshold'};
-% evaluation.Properties.RowNames = methods;
-% for iM = 1:nM
-%     method = methods{iM};
-%     switch method
-%         case {'Niblack';'midgrey';'Bernsen';'Sauvola'}
-%             T = thresholds-0.5; % allow the offset to run from -0.5 to 0.5
-%         otherwise
-%             T = thresholds;
-%     end
-%     
-%     [evaluation{iM,'F1'}, evaluation{iM,'F1_idx'}] = max(PR_methods.results{iM}{:,'F1'});
-%     evaluation{iM,'F1_threshold'} = T(evaluation{iM,'F1_idx'});
-%     [evaluation{iM,'FBeta2'}, evaluation{iM,'FBeta2_idx'}] = max(PR_methods.results{iM}{:,'FBeta2'});
-%     evaluation{iM,'FBeta2_threshold'} = T(evaluation{iM,'FBeta2_idx'});
-% end
-% end
-
 function [bw_im, sk_out] = fnc_skeleton(im_in,bw_vein,threshold)
 warning off
 if islogical(im_in)
@@ -594,7 +591,7 @@ sk_out = bwmorph(sk_out,'fill');
 sk_out = bwmorph(sk_out,'thin',inf);
 end
 
-function results = fnc_skeleton_analysis(sk_in,roi_in)
+function results = fnc_skeleton_analysis(sk_in,roi_in,FolderName)
 results = table;
 ROIArea = sum(roi_in(:));
 for iT = 1:size(sk_in,3)
@@ -671,7 +668,7 @@ methods = PR_methods.name(PR_methods.select);
 cols = {'r';'g';'b';'c';'m';'g';'b';'c'};
 F1 = {'r*';'g*';'b*';'c*';'m*:';'g*';'b*';'c*'};
 FBeta2 = {'ro';'go';'bo';'co';'mo:';'go';'bo';'co'};
-hfig = figure('Renderer','painters');
+hfig = figure('Renderer','painters','Units','normalized','Position',[0 0 1 1]);
 hfig.Color = 'w';
 for iM = 1:numel(methods)
 method = methods{iM};
