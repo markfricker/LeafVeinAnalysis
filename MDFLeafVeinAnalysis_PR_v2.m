@@ -5,11 +5,6 @@ dir_out_PR_images = ['..' filesep 'summary' filesep 'PR' filesep 'images' filese
 dir_out_PR_graphs = ['..' filesep 'summary' filesep 'PR' filesep 'graphs' filesep];
 %% set up parameters
 micron_per_pixel = micron_per_pixel.*DownSample;
-sk_width = 3;
-E_width = 1;
-%% set up default colour map
-cmap = jet(256);
-cmap(1,:) = 0;
 %% initialise main program
 step = 0;
 warning off
@@ -42,23 +37,29 @@ T = Tmin:Tint:Tmax-Tint;
 %% set up an array of methods
 PR_methods.name = {'CNN';'Vesselness';'FeatureType';'BowlerHat';'midgrey';'Niblack';'Bernsen';'Sauvola';'MFATl';'MFATp'};
 % choose which methods to test
-PR_methods.select = logical([1 1 1 1 1 0 0 0 0 0]);
+PR_methods.select = logical([1 1 1 1 1 1 1 1 1 1]);
 % set up the evaluation table for the full width images
 PR_methods.evaluation_fw = array2table(zeros(numel(PR_methods.name),6,'single'));
 PR_methods.evaluation_fw.Properties.VariableNames = { ...
     'F1' 'F1_idx' 'F1_threshold' ...
     'FBeta2' 'FBeta2_idx' 'FBeta2_threshold'};
-PR_methods.evaluation_fw.Filename = repelem({FolderName},height(PR_methods.evaluation_fw),1);
-PR_methods.evaluation_fw = PR_methods.evaluation_fw(:,[end, 1:end-1]);
 PR_methods.evaluation_fw.Properties.RowNames = PR_methods.name;
+% add in the filename and method at the start
+PR_methods.evaluation_fw.Filename = repelem({FolderName},height(PR_methods.evaluation_fw),1);
+PR_methods.evaluation_fw.Method = PR_methods.name;
+PR_methods.evaluation_fw = PR_methods.evaluation_fw(:,[end-1:end, 1:end-2]);
+
 % set up an evaluation table for the skeleton comparison
 PR_methods.evaluation_sk = array2table(zeros(numel(PR_methods.name),6,'single'));
 PR_methods.evaluation_sk.Properties.VariableNames = { ...
     'F1' 'F1_idx' 'F1_threshold' ...
     'FBeta2' 'FBeta2_idx' 'FBeta2_threshold'};
-PR_methods.evaluation_sk.Filename = repelem({FolderName},height(PR_methods.evaluation_sk),1);
-PR_methods.evaluation_sk = PR_methods.evaluation_sk(:,[end, 1:end-1]);
 PR_methods.evaluation_sk.Properties.RowNames = PR_methods.name;
+% add in the filename and method at the start
+PR_methods.evaluation_sk.Filename = repelem({FolderName},height(PR_methods.evaluation_sk),1);
+PR_methods.evaluation_sk.Method = PR_methods.name;
+PR_methods.evaluation_sk = PR_methods.evaluation_sk(:,[end-1:end, 1:end-2]);
+
 %% add in file information to the results file
 results.File = FolderName;
 results.TimeStamp = datetime('now','TimeZone','local','Format','d-MMM-y HH:mm:ss Z');
@@ -165,10 +166,10 @@ delete(hfig)
 hfig = fnc_display_sk_PR(PR_methods);
 export_fig([dir_out_PR_graphs FolderName '_PR_sk_plots'],'-native','-png',hfig)
 delete(hfig)
-%% display the figure
-hfig = fnc_display_images(PR_methods);
-export_fig([dir_out_PR_images FolderName '_PR_images'],'-native','-png',hfig)
-delete(hfig)
+% % % %% display the figure
+% % % hfig = fnc_display_images(PR_methods);
+% % % export_fig([dir_out_PR_images FolderName '_PR_images'],'-native','-png',hfig)
+% % % delete(hfig)
 %% add in the file and method indexes
 results.F1.Filename = repelem({FolderName},height(results.F1),1);
 results.F1.Method = results.F1.Properties.RowNames;
@@ -178,7 +179,7 @@ results.F1_ratio.Method = results.F1_ratio.Properties.RowNames;
 results.F1_ratio = results.F1_ratio(:,[end-1:end, 1:end-2]);
 results.FBeta2.Filename = repelem({FolderName},height(results.FBeta2),1);
 results.FBeta2.Method = results.FBeta2.Properties.RowNames;
-results.Beta2 = results.FBeta2(:,[end-1:end, 1:end-2]);
+results.FBeta2 = results.FBeta2(:,[end-1:end, 1:end-2]);
 results.FBeta2_ratio.Filename = repelem({FolderName},height(results.FBeta2_ratio),1);
 results.FBeta2_ratio.Method = results.FBeta2_ratio.Properties.RowNames;
 results.FBeta2_ratio = results.FBeta2_ratio(:,[end-1:end, 1:end-2]);
@@ -267,6 +268,8 @@ end
 
 function im_out = fnc_enhance_im(im_in,DownSample,method)
 switch method
+    case {'CNN'}
+        im_out = mat2gray(im_in);    
     case {'im';'midgrey';'Niblack';'Bernsen';'Sauvola';'Singh'}
         im_out = imcomplement(mat2gray(im_in));
     case {'Vesselness';'FeatureType';'BowlerHat';'MFATl';'MFATp'} % use an image pyramid to span scales
@@ -311,11 +314,10 @@ switch method
         end
     case 'MFATl'
         for iL = 1:3
-            % iL = 1;
             % Parameters setting
             sigmas = [1:1:3];
             spacing = .7; whiteondark = true;
-            %                     tau = 0.05; tau2 = 0.25; D = 0.45;
+            % tau = 0.05; tau2 = 0.25; D = 0.45;
             tau = 0.03; tau2 = 0.5; D = 0.01;
             % Proposed Method (Eign values based version)
             temp = FractionalIstropicTensor(I{iL},sigmas,tau,tau2,D,spacing,whiteondark);
@@ -323,10 +325,8 @@ switch method
         end
     case 'MFATp'
         for iL = 1:3
-            % iL = 1;
             % Parameters setting
             sigmas = [1:1:3];
-            
             spacing = .7; whiteondark = true;
             tau = 0.05; tau2 = 0.25; D = 0.45;
             % Proposed Method (Eign values based version)
