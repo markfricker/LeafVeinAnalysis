@@ -1,4 +1,4 @@
-function results = MDFLeafVeinAnalysis_v6(FolderName,micron_per_pixel,DownSample,threshold,ShowFigs,ExportFigs,FullLeaf,FullMetrics)
+%function results = MDFLeafVeinAnalysis_v6(FolderName,micron_per_pixel,DownSample,threshold,ShowFigs,ExportFigs,FullLeaf,FullMetrics)
 %% set up directories
 dir_out_images = ['..' filesep 'summary' filesep 'images' filesep];
 dir_out_width = ['..' filesep 'summary' filesep 'width' filesep];
@@ -146,7 +146,7 @@ writetable(G_HLD.Nodes,[dir_out_data FolderName '_results.xlsx'],'FileType','spr
 % dir_in = pwd;
 % %xls_delete_sheets([dir_in filesep FolderName '_results.xlsx'],{'Sheet1','Sheet2','Sheet3'})
 % cd(dir_current);
-end
+%end
 
 function [im,im_cnn,bw_mask,bw_vein,bw_roi,bw_GT] = fnc_load_CNN_images(FolderName,DownSample)
 % get the contents of the directory
@@ -488,8 +488,8 @@ EType(skTree(M_pix)) = {'ET'};
 % set the edge weight to the average width
 E_weight = W_mean;
 % initially the nodes are empty
-nodei = zeros(nEdges,1, 'single');
-nodej = zeros(nEdges,1, 'single');
+nodei = zeros(nEdges,1);
+nodej = zeros(nEdges,1);
 node_idx = unique([I_idx'; J_idx']);
 % combine the edge metrics into an EdgeTable
 names = {'EndNodes', 'node_Idx', 'Name', 'Type', 'Weight', ...
@@ -556,14 +556,14 @@ rows = (1:size(A,1))';
 mx_idx = sub2ind(size(A),rows,max_idx);
 Amid = A;
 Amid(mx_idx) = 0;
-G_veins.Nodes.node_Mid = single(full(max(Amid,[],2)));
+G_veins.Nodes.node_Mid = full(max(Amid,[],2));
 % Calculate the minimum edge width. To calculate the initial min of a
 % sparse matrix, take the negative and then add back the maximum
 [nnzr, nnzc] = find(A);
 B = -A + sparse(nnzr,nnzc,max(edge_Maj),size(A,1),size(A,2));
 mn = max(B,[],2);
-G_veins.Nodes.node_Min = single(-(mn-max(edge_Maj)));
-G_veins.Nodes.node_Maj = single(edge_Maj);
+G_veins.Nodes.node_Min = -(mn-max(edge_Maj));
+G_veins.Nodes.node_Maj = edge_Maj;
 % get the degree for nodei and nodej
 NDegI = G_veins.Nodes{G_veins.Edges.EndNodes(:,1),'node_Degree'};
 NDegJ = G_veins.Nodes{G_veins.Edges.EndNodes(:,2),'node_Degree'};
@@ -576,7 +576,7 @@ NMidJ = G_veins.Nodes{G_veins.Edges.EndNodes(:,2),'node_Mid'};
 % Get the number of pixels in the edge
 N_pix = G_veins.Edges.N_pix;
 % Get the length as the difference in euclidean distance between pixels
-L_val = cellfun(@(x) single(hypot(diff(x(:,1)),diff(x(:,2)))),edgelist,'UniformOutput',0);
+L_val = cellfun(@(x) hypot(diff(x(:,1)),diff(x(:,2))),edgelist,'UniformOutput',0);
 % L_sum is the cumulative length of the edge starting from nodei
 L_sum = cellfun(@(x) cumsum(x),L_val,'UniformOutput',0);
 % Initially use half the average (NAveI) or maximum (NMajI) at
@@ -697,7 +697,7 @@ rows = (1:size(A,1))';
 % calculate a weighted adjacency matrix for the center width
 A = sparse(i,j,double(G_veins.Edges.Width),nN,nN);
 A = A + A.' - diag(diag(A));
-G_veins.Nodes.node_Strength = single(full(sum(A,2)));
+G_veins.Nodes.node_Strength = full(sum(A,2));
 % calculate a weighted adjacency matrix for orientation for
 % edges ij
 O = sparse(i,j,double(G_veins.Edges.Or_ij),nN,nN);
@@ -712,7 +712,7 @@ edge_Maj = full(edge_Maj);
 mx_idx = sub2ind(size(A),rows,max_idx);
 % get the orientation of the largest edge from the orientation adjacency
 % matrix using the max_idx index
-G_veins.Nodes.node_Omaj = single(full(O(mx_idx)));
+G_veins.Nodes.node_Omaj = full(O(mx_idx));
 %G_veins.Nodes.node_Omaj(abs(G_veins.Nodes.node_Omaj)>180) = mod(G_veins.Nodes.node_Omaj(abs(G_veins.Nodes.node_Omaj)>180),180);
 % Calculate the minimum edge width. To calculate the min of a
 % sparse matrix, take the negative and then add back the maximum. This
@@ -723,10 +723,10 @@ B = -A + MaxA;
 [edge_Min, min_idx] = max(B,[],2);
 mn_idx = sub2ind(size(A),rows,min_idx);
 % convert back to absolute positive value by negating and adding back the max
-G_veins.Nodes.node_Min = single(-full(edge_Min)+max(edge_Maj)); % convert to single precision
+G_veins.Nodes.node_Min = -full(edge_Min)+max(edge_Maj); 
 % get the orentation of the weakest edge from the orientation adjacency
 % matric and the min_idx
-G_veins.Nodes.node_Omin = single(full(O(mn_idx)));
+G_veins.Nodes.node_Omin = full(O(mn_idx));
 %G_veins.Nodes.node_Omin(abs(G_veins.Nodes.node_Omin)>180) = mod(G_veins.Nodes.node_Omin(abs(G_veins.Nodes.node_Omin)>180),180);
 % Calculate the width of the penultimate edge width by removing the max
 % values from the adjacency matrix and recalculating max for the remainder
@@ -734,12 +734,11 @@ Amid = A;
 Amid(mx_idx) = 0;
 [edge_Mid, mid_idx] = max(Amid,[],2);
 pn_idx = sub2ind(size(A),rows,mid_idx);
-G_veins.Nodes.node_Mid = single(full(edge_Mid)); % convert to single precision
+G_veins.Nodes.node_Mid = full(edge_Mid); 
 % get the orientation of the penultimate edge from the orientation
 % adjacency matrix using the pn_idx
-G_veins.Nodes.node_Omid = single(full(O(pn_idx)));
-%G_veins.Nodes.node_Omid(abs(G_veins.Nodes.node_Omid)>180) = mod(G_veins.Nodes.node_Omid(abs(G_veins.Nodes.node_Omid)>180),180);
-G_veins.Nodes.node_Maj = single(edge_Maj); % convert max to single precision
+G_veins.Nodes.node_Omid = full(O(pn_idx));
+G_veins.Nodes.node_Maj = edge_Maj; 
 G_veins.Nodes.node_Average = G_veins.Nodes.node_Strength./G_veins.Nodes.node_Degree;
 % tidy up results for k=1 nodes
 idx = G_veins.Nodes.node_Degree == 1;
@@ -868,13 +867,13 @@ bw_areoles = bwmorph(bw_areoles,'clean');
 % trim the skeleton to match
 sk_polygon = sk & total_area_mask;
 % construct a label matrix of areas including the veins
-LM = single(bwlabel(bw_polygons,4));
+LM = bwlabel(bw_polygons,4);
 % remove the skeleton in the calculation of the neighbouring
 % area
 LM(sk_polygon) = NaN;
 % find the neighbours of each edge
-Neighbour1 = single(colfilt(LM,[3 3],'sliding',@max));
-Neighbour2 = single(colfilt(LM,[3 3],'sliding',@(x) min(x,[],'Omitnan')));
+Neighbour1 = colfilt(LM,[3 3],'sliding',@max);
+Neighbour2 = colfilt(LM,[3 3],'sliding',@(x) min(x,[],'Omitnan'));
 % add the neighbours to the graph
 G_veins.Edges.Ai = Neighbour1(G_veins.Edges.M_pix);
 G_veins.Edges.Aj = Neighbour2(G_veins.Edges.M_pix);
@@ -902,11 +901,11 @@ A_idx(isnan(A_idx)) = 1;
 % duplicate the area value for the number of pixels in each edge
 A_val = cellfun(@(x,y) repmat(x,y,1), num2cell(A_idx),num2cell(polygon_areas),'UniformOutput',0);
 % concatenate all the values into a single vector
-A_all = single(cat(1,A_val{:}));
+A_all = cat(1,A_val{:});
 % set the edge values to the edge ID for each edge in the image
 %im_polygons = zeros(nY,nX);
 im_polygons = zeros(nY,nX, 'single');
-im_polygons(idx) = A_all;
+im_polygons(idx) = single(A_all);
 cmap = cool(256);
 cmap(1,:) = 1;
 % punch out the skeleton to make the polygons distinct
@@ -1274,21 +1273,21 @@ L = sum(G_veins.Edges.Length);
 MST = minspantree(G_veins,'method','sparse');
 MSTL = sum(MST.Edges.Weight)/L;
 % get the number of nodes and edge in the dual graph
-nnP = single(numnodes(G_polygons));
-neP = single(numedges(G_polygons));
-parent = single(zeros(1,nnP));
-width_threshold = zeros((2*nnP)-1,1,'single');
-node_Boundary = [G_polygons.Nodes{:,'Boundary'}; zeros(nnP-1,1,'single')];
-node_Area = [G_polygons.Nodes{:,'Area'}; zeros(nnP-1,1,'single')];
-node_Degree = [ones(nnP,1,'single'); zeros(nnP-1,1,'single')];
-degree_Asymmetry = zeros(nnP*2-1,1,'single');
-area_Asymmetry = zeros(nnP*2-1,1,'single');
-node_HS = [ones(nnP,1,'single'); zeros(nnP-1,1,'single')];
-subtree_degree_Asymmetry = zeros((2*nnP)-1,1,'single');
-subtree_area_Asymmetry = zeros((2*nnP)-1,1,'single');
-VTotLen = [repmat(L,nnP,1); zeros(nnP-1,1,'single')];
-VTotVol = [repmat(L,nnP,1); zeros(nnP-1,1,'single')];
-MSTRatio = [repmat(MSTL,nnP,1); zeros(nnP-1,1,'single')];
+nnP = numnodes(G_polygons);
+neP = numedges(G_polygons);
+parent = zeros(1,nnP);
+width_threshold = zeros((2*nnP)-1,1);
+node_Boundary = [G_polygons.Nodes{:,'Boundary'}; zeros(nnP-1,1)];
+node_Area = [G_polygons.Nodes{:,'Area'}; zeros(nnP-1,1)];
+node_Degree = [ones(nnP,1); zeros(nnP-1,1)];
+degree_Asymmetry = zeros(nnP*2-1,1);
+area_Asymmetry = zeros(nnP*2-1,1);
+node_HS = [ones(nnP,1); zeros(nnP-1,1)];
+subtree_degree_Asymmetry = zeros((2*nnP)-1,1);
+subtree_area_Asymmetry = zeros((2*nnP)-1,1);
+VTotLen = [repmat(L,nnP,1); zeros(nnP-1,1)];
+VTotVol = [repmat(L,nnP,1); zeros(nnP-1,1)];
+MSTRatio = [repmat(MSTL,nnP,1); zeros(nnP-1,1)];
 % redimension the stat arrays to accomodate all the fused nodes
 areole_stats(nnP.*2-1).Area = 0;
 polygon_stats(nnP.*2-1).Area = 0;
@@ -1298,7 +1297,7 @@ polygon_stats(nnP.*2-1).Area = 0;
 nodei = G_polygons.Edges{idx,'EndNodes'}(:,1);
 nodej = G_polygons.Edges{idx,'EndNodes'}(:,2);
 % set up a list of the initial edges sorted by width
-ET = single([nodei nodej W]);
+ET = [nodei nodej W];
 % start the index for the new node (Nk) to follow on the number of existing
 % nodes (nnP)
 Nk = nnP;
@@ -1310,7 +1309,7 @@ PCC.PixelIdxList  = {polygon_stats.PixelIdxList}';
 LM = labelmatrix(PCC);
 P_stats = regionprops('table',LM,'Area','Centroid','Perimeter','MajorAxisLength','MinorAxisLength','Circularity','Eccentricity','Orientation');
 % set up the endnodes
-EndNodes = zeros(nnP*2-2,2,'single');
+EndNodes = zeros(nnP*2-2,2);
 % loop through all the edges, calculating the metrics
 for iE = 1:neP
     % test each edge in sequence
@@ -1320,7 +1319,7 @@ for iE = 1:neP
     % the end nodes are different
     if Ni~=Nj
         % create a new node
-        Nk = single(Nk+1);
+        Nk = Nk+1;
         % get the width threshold for the HLD for this partition
         width_threshold(Nk,1) = ET(1,3);
         % construct the EndNodes for the two new edges that connect Ni and Nj to Nk
@@ -1367,6 +1366,10 @@ for iE = 1:neP
         PCC.NumObjects = 1;
         PCC.PixelIdxList  = P_PIL(Nk);
         P_stats(Nk,:) = regionprops('table',PCC,'Area','Centroid','Perimeter','MajorAxisLength','MinorAxisLength','Circularity','Eccentricity','Orientation');
+        % check for a circularity problem
+        if P_stats{Nk,'Circularity'}>3
+            P_PIL(Nk)
+        end
         % find edges in the vein graph up to and including this edge width
         Eidx = G_veins.Edges.Width <= width_threshold(Nk,1);
         % remove these edges from the graph
