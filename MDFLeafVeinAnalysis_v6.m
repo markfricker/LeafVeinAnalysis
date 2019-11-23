@@ -1,4 +1,4 @@
-%function results = MDFLeafVeinAnalysis_v5(FolderName,micron_per_pixel,DownSample,ShowFigs,ExportFigs,FullLeaf,FullMetrics)
+function results = MDFLeafVeinAnalysis_v6(FolderName,micron_per_pixel,DownSample,threshold,ShowFigs,ExportFigs,FullLeaf,FullMetrics)
 %% set up directories
 dir_out_images = ['..' filesep 'summary' filesep 'images' filesep];
 dir_out_width = ['..' filesep 'summary' filesep 'width' filesep];
@@ -20,14 +20,8 @@ disp(['Step ' num2str(step) ': Processing ' FolderName])
 [im,im_cnn,bw_mask,bw_vein,bw_roi,bw_GT] = fnc_load_CNN_images(FolderName,DownSample);
 %% get the skeleton
 step = step+1;
-disp(['Step ' num2str(step) ': Skeleton extraction'])
-% if exist('PR','var') && ~isempty(PR)
-%     % use the optimum threshold value determined from the PR analysis
-%     [bw_cnn, sk, skLoop, skTree] = fnc_skeleton(im_cnn,bw_vein,PR.evaluation{'cnn','F1_threshold'});
-% else
-    % use a standard threshold
-    [bw_cnn, sk, skLoop, skTree] = fnc_skeleton(im_cnn,bw_vein,0.22);
-% end
+disp(['Step ' num2str(step) ': Skeleton extraction using threshold ' num2str(threshold)])
+[bw_cnn, sk, skLoop, skTree] = fnc_skeleton(im_cnn,bw_vein,threshold);
 %% calculate the width from the distance transform of the binarized cnn image
 step = step+1;
 disp(['Step ' num2str(step) ': Calculating width from distance transform'])
@@ -86,8 +80,8 @@ im_areoles_rgb = fnc_polygon_image(areole_stats, sk_polygon, total_area_mask);
 %% convert to an areole graph and a polygon graph
 step = step+1;
 disp(['Step ' num2str(step) ': Dual graph'])
-[G_areoles] = fnc_area_graph(G_veins,areole_stats);
-[G_polygons] = fnc_area_graph(G_veins,polygon_stats);
+[G_polygons,polygon_LM] = fnc_area_graph(G_veins,polygon_stats,polygon_LM);
+[G_areoles,~] = fnc_area_graph(G_veins,areole_stats,polygon_LM);
 %% collect summary statistics into a results array
 step = step+1;
 disp(['Step ' num2str(step) ': Summary statistics'])
@@ -102,8 +96,9 @@ results.File = FolderName;
 results.TimeStamp = datetime('now','TimeZone','local','Format','d-MMM-y HH:mm:ss Z');
 results.MicronPerPixel = micron_per_pixel;
 results.DownSample = DownSample;
+results.Threshold = threshold;
 % reorder the table to get the file info first
-results = results(:, [end-3:end 1:end-4]);
+results = results(:, [end-4:end 1:end-5]);
 %% save the graphs to matlab
 step = step+1;
 disp(['Step ' num2str(step) ': Saving graphs data'])
@@ -146,12 +141,12 @@ writetable(G_polygons.Nodes,[dir_out_data FolderName '_results.xlsx'],'FileType'
 writetable(G_HLD.Edges,[dir_out_data FolderName '_results.xlsx'],'FileType','spreadsheet','WriteVariableNames',1,'Sheet','HLD Edges')
 writetable(G_HLD.Nodes,[dir_out_data FolderName '_results.xlsx'],'FileType','spreadsheet','WriteVariableNames',1,'Sheet','HLD Nodes')
 % remove the unnecessary default sheets. Note this requires the full path.
-dir_current = pwd;
-cd(dir_out_data);
-dir_in = pwd;
-xls_delete_sheets([dir_in filesep FolderName '_results.xlsx'],{'Sheet1','Sheet2','Sheet3'})
-cd(dir_current);
-%end
+% dir_current = pwd;
+% cd(dir_out_data);
+% dir_in = pwd;
+% %xls_delete_sheets([dir_in filesep FolderName '_results.xlsx'],{'Sheet1','Sheet2','Sheet3'})
+% cd(dir_current);
+end
 
 function [im,im_cnn,bw_mask,bw_vein,bw_roi,bw_GT] = fnc_load_CNN_images(FolderName,DownSample)
 % get the contents of the directory
@@ -1032,7 +1027,7 @@ Roughness = num2cell(([areole_stats.Perimeter].^2)./[areole_stats.Area]);
 [areole_stats(:).ID] = deal(ID{:});
 end
 
-function G_areas = fnc_area_graph(G_veins,area_stats)
+function [G_areas,LM] = fnc_area_graph(G_veins,area_stats,LM)
 % Construct a NodeTable with the node for each area, along with the
 % corresponding metrics
 % extract the centroid values
@@ -1058,16 +1053,19 @@ edges = [i j G_veins.Edges.Width G_veins.Edges.Name];
 edges = sortrows(edges,3);
 [~,idx] = unique(edges(:,1:2),'rows');
 edges = double(edges(idx,:));
+% remove edges connected to the background 
 idx = max(edges(:,1:2)==0, [],2);
 edges(idx,:) = [];
 % remove edges connected to themselves
 idx = diff(edges(:,1:2),[],2)==0;
 edges(idx,:) = [];
-% remove edges not present in the polygons
+% create the edgetable
 EdgeTable = table([edges(:,1) edges(:,2)],edges(:,3),edges(:,4), 'VariableNames', names);
 G_areas = graph(EdgeTable,NodeTable,'OmitSelfLoops');
 % check the number of components and only keep the largest
 CC = conncomp(G_areas);
+% only keep the connected areas in the label matrix
+LM(~ismember(LM,G_areas.Nodes.ID(CC==1))) = 0;
 G_areas = rmnode(G_areas,find(CC>1));
 end
 
@@ -1236,16 +1234,21 @@ PCC.ImageSize = size(polygon_LM);
 PCC.NumObjects = 1;
 PCC.PixelIdxList = {};
 % find all the polygons on the boundary
+% % remove any disconnected areas from the label matrix
+% Didx = ismember(LM,find(CC>1));
 boundary = polygon_LM==0;
 boundary = bwareafilt(boundary,[200 inf]);
 boundary = imdilate(boundary,ones(3));
 [r,c] = find(boundary);
 B_polygons = bwselect(bw_polygons,c,r,4);
 Bidx = unique(polygon_LM(B_polygons));
-Bidx(Bidx==0) = [];
+% Bidx(Bidx==0) = [];
+% temp = ismember(G_polygons.Nodes.ID,Bidx);
+% temp = zeros(numnodes(G_polygons),1);
+% temp(Bidx) = 1;
 % add in a boundary flag if touching the boundary
-G_polygons.Nodes.Boundary(:,1) = 0;
-G_polygons.Nodes.Boundary(Bidx,1) = 1;
+G_polygons.Nodes.Boundary = ismember(G_polygons.Nodes.ID,Bidx);
+% G_polygons.Nodes.Boundary(Bidx,1) = 1;
 % select the largest component of the polygon graph
 CC = conncomp(G_polygons);
 idx = find(CC==1);
@@ -1305,7 +1308,7 @@ P_PIL = {polygon_stats.PixelIdxList};
 PCC.NumObjects = length(P_PIL);
 PCC.PixelIdxList  = {polygon_stats.PixelIdxList}';
 LM = labelmatrix(PCC);
-P_stats = regionprops('table',LM,'Area','Centroid','Perimeter','MajorAxisLength','MinorAxisLength','Eccentricity','Orientation');
+P_stats = regionprops('table',LM,'Area','Centroid','Perimeter','MajorAxisLength','MinorAxisLength','Circularity','Eccentricity','Orientation');
 % set up the endnodes
 EndNodes = zeros(nnP*2-2,2,'single');
 % loop through all the edges, calculating the metrics
@@ -1363,7 +1366,7 @@ for iE = 1:neP
         % stats structures
         PCC.NumObjects = 1;
         PCC.PixelIdxList  = P_PIL(Nk);
-        P_stats(Nk,:) = regionprops('table',PCC,'Area','Centroid','Perimeter','MajorAxisLength','MinorAxisLength','Eccentricity','Orientation');
+        P_stats(Nk,:) = regionprops('table',PCC,'Area','Centroid','Perimeter','MajorAxisLength','MinorAxisLength','Circularity','Eccentricity','Orientation');
         % find edges in the vein graph up to and including this edge width
         Eidx = G_veins.Edges.Width <= width_threshold(Nk,1);
         % remove these edges from the graph
@@ -1394,7 +1397,7 @@ end
 parent(end+1) = Nk+1;
 parent = double(fliplr(max(parent(:)) - parent));
 % calculate additional metrics
-Circularity = (4.*pi.*[P_stats.Area])./([P_stats.Perimeter].^2);
+%Circularity = (4.*pi.*[P_stats.Area])./([P_stats.Perimeter].^2);
 Elongation = [P_stats.MajorAxisLength]./[P_stats.MinorAxisLength];
 Roughness = ([P_stats.Perimeter].^2)./[P_stats.Area];
 % assemble the HLD graph object
@@ -1411,7 +1414,7 @@ NodeTable = table((1:(2*nnP)-1)', width_threshold.*mm, ...
     [P_stats.MinorAxisLength].*mm, ...
     [P_stats.Eccentricity], ...
     [P_stats.Orientation], ...
-    Circularity, ...
+    [P_stats.Circularity], ...
     Elongation, ...
     Roughness, ...
     VTotLen.*mm, ...
@@ -1507,9 +1510,11 @@ for ia = 1:6
 end
 drawnow
 if ExportFigs
+    warning('off','MATLAB:prnRenderer:opengl');
     export_fig(name,'-png','-r300',hfig)
     %     saveas(hfig,name)
 end
+delete(hfig);
 end
 
 function hfig = display_HLD(G_polygons,im_cnn,G_HLD,FullLeaf,name,ExportFigs)
@@ -1640,9 +1645,11 @@ for icc = 1:last
 end
 drawnow
 if ExportFigs
+    warning('off','MATLAB:prnRenderer:opengl');
     export_fig(name,'-png','-r300','-painters',hfig)
     %     saveas(hfig,name)
 end
+delete(hfig);
 end
 
 function hfig = display_HLD_figure(G_polygons,im_cnn,G_HLD,FullLeaf,name,ExportFigs)
@@ -1713,6 +1720,7 @@ for icc = 1:last
 end
 drawnow
 if ExportFigs
+    warning('off','MATLAB:prnRenderer:opengl');
     export_fig(name,'-png','-r300','-painters',hfig)
     %     saveas(hfig,name)
 end

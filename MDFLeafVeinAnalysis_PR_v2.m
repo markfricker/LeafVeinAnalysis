@@ -166,10 +166,10 @@ delete(hfig)
 hfig = fnc_display_sk_PR(PR_methods);
 export_fig([dir_out_PR_graphs FolderName '_PR_sk_plots'],'-native','-png',hfig)
 delete(hfig)
-% % % %% display the figure
-% % % hfig = fnc_display_images(PR_methods);
-% % % export_fig([dir_out_PR_images FolderName '_PR_images'],'-native','-png',hfig)
-% % % delete(hfig)
+%% display the figure
+hfig = fnc_display_images(PR_methods);
+export_fig([dir_out_PR_images FolderName '_PR_images'],'-native','-png',hfig)
+delete(hfig)
 %% add in the file and method indexes
 results.F1.Filename = repelem({FolderName},height(results.F1),1);
 results.F1.Method = results.F1.Properties.RowNames;
@@ -290,8 +290,18 @@ switch method
     case 'Vesselness'
         % filter each scale with an overlap
         for iL = 1:nLevels
+            if verLessThan('MatLab','9.5')
+            else
+                % structureSensitivity defined differently in ver 9.5 and
+                % above - we need the old version calculated as:
+                s = 0.5*maxhessiannorm(I{iL});
+            end
             for iW = minW:2*minW+1
-                temp = fibermetric(I{iL}, iW, 'ObjectPolarity', 'bright');
+                if verLessThan('MatLab','9.5')
+                    temp = fibermetric(I{iL}, iW,'ObjectPolarity', 'bright');
+                else
+                    temp = fibermetric(I{iL}, iW, 'StructureSensitivity',s,'ObjectPolarity', 'bright');
+                end
                 temp = imclose(temp,D);
                 im_out = max(im_out,imresize(temp,size(im_in)));
             end
@@ -591,7 +601,7 @@ sk_out = bwmorph(sk_out,'fill');
 sk_out = bwmorph(sk_out,'thin',inf);
 end
 
-function results = fnc_skeleton_analysis(sk_in,roi_in,FolderName)
+function results = fnc_skeleton_analysis(sk_in,roi_in)
 results = table;
 ROIArea = sum(roi_in(:));
 for iT = 1:size(sk_in,3)
@@ -618,10 +628,10 @@ end
 
 function hfig = fnc_display_fw_PR(PR_methods)
 methods = PR_methods.name(PR_methods.select);
-cols = {'r-';'g-';'b-';'c-';'m-';'g:';'b:';'c:'};
-F1 = {'r*';'g*';'b*';'c*';'m*:';'g*';'b*';'c*'};
-FBeta2 = {'ro';'go';'bo';'co';'mo:';'go';'bo';'co'};
-mrks = {'.';'.';'.';'.';'.';'.';'.';'.'};
+cols = {'r-';'g-';'b-';'c-';'m-';'y-';'r:';'g:';'b:';'c:';'m:';'y:'};
+F1 = {'r*';'g*';'b*';'c*';'m*:';'y*';'r*';'g*';'b*';'c*';'m*';'y*'};
+FBeta2 = {'ro';'go';'bo';'co';'mo:';'yo';'ro';'go';'bo';'co';'mo';'yo'};
+mrks = {'.';'.';'.';'.';'.';'.';'.';'+';'+';'+';'+';'+'};
 % plot the precision-recall plots and mark the optimum
 hfig = figure('Renderer','painters');
 hfig.Color = 'w';
@@ -641,10 +651,10 @@ end
 
 function hfig = fnc_display_sk_PR(PR_methods)
 methods = PR_methods.name(PR_methods.select);
-cols = {'r-';'g-';'b-';'c-';'m-';'g:';'b:';'c:'};
-F1 = {'r*';'g*';'b*';'c*';'m*:';'g*';'b*';'c*'};
-FBeta2 = {'ro';'go';'bo';'co';'mo:';'go';'bo';'co'};
-mrks = {'.';'.';'.';'.';'.';'.';'.';'.'};
+cols = {'r-';'g-';'b-';'c-';'m-';'y-';'r:';'g:';'b:';'c:';'m:';'y:'};
+F1 = {'r*';'g*';'b*';'c*';'m*:';'y*';'r*';'g*';'b*';'c*';'m*';'y*'};
+FBeta2 = {'ro';'go';'bo';'co';'mo:';'yo';'ro';'go';'bo';'co';'mo';'yo'};
+mrks = {'.';'.';'.';'.';'.';'.';'.';'+';'+';'+';'+';'+'};
 % plot the precision-recall plots and mark the optimum
 hfig = figure('Renderer','painters');
 hfig.Color = 'w';
@@ -665,39 +675,46 @@ end
 
 function hfig = fnc_display_threshold_results(results,PR_methods)
 methods = PR_methods.name(PR_methods.select);
-cols = {'r';'g';'b';'c';'m';'g';'b';'c'};
-F1 = {'r*';'g*';'b*';'c*';'m*:';'g*';'b*';'c*'};
-FBeta2 = {'ro';'go';'bo';'co';'mo:';'go';'bo';'co'};
+cols = {'r';'g';'b';'c';'m';'y';'k';'r';'g';'b';'c';'m';'y'};
+styles = {'-';'-';'-';'-';'-';'-';'-';':';':';':';':';':';':'};
 hfig = figure('Renderer','painters','Units','normalized','Position',[0 0 1 1]);
 hfig.Color = 'w';
 for iM = 1:numel(methods)
-method = methods{iM};
+    method = methods{iM};
     data = results.(method);
     GT = results.GT;
     names = GT.Properties.VariableNames;
     ratio = log(data{:,:}./GT{:,:});
-        F1_idx_sk = PR_methods.evaluation_sk{method,'F1_idx'};
+    F1_idx_sk = PR_methods.evaluation_sk{method,'F1_idx'};
     FBeta2_idx_sk = PR_methods.evaluation_sk{method,'FBeta2_idx'};
     x = (1:size(ratio,1));
     plot_metrics = [1 2 3 4 5 6 7 8 9 10 11];
     for i = 1:numel(plot_metrics)
         ax = subplot(3,4,i);
-        plot(x,ratio(:,plot_metrics(i)),'LineStyle','-','Marker','*','MarkerIndices',F1_idx_sk,'Color',cols{iM})
+        plot(x,ratio(:,plot_metrics(i)), ...
+            'Linestyle',styles{iM}, ...
+            'Color',cols{iM}, ...
+            'Marker','*', ...
+            'MarkerIndices',F1_idx_sk)
         hold on
-        plot(x,ratio(:,plot_metrics(i)),'LineStyle','none','Marker','o','MarkerIndices',FBeta2_idx_sk,'Color',cols{iM})
+        plot(x,ratio(:,plot_metrics(i)), ...
+            'LineStyle','none', ...
+            'Color',cols{iM}, ...
+            'Marker','o', ...
+            'MarkerIndices',FBeta2_idx_sk)
         title(names{plot_metrics(i)})
         ylim([-1.2 1.2])
         hold on
         plot([1 20],[0 0],'k:')
         xlabel('Threshold')
-        xticklabels = string((0:5:100)');
+        xticklabels(string(0:5:100));
         ax.FontSize = 8;
         ax.Title.FontWeight = 'normal';
         ax.Title.FontUnits = 'points';
         ax.Title.FontSize = 10;
         if i == 1
             subplot(3,4,12)
-            plot(x,ratio(:,plot_metrics(i)),'LineStyle','-','Marker','*','MarkerIndices',F1_idx_sk,'Color',cols{iM})
+            plot(x,ratio(:,plot_metrics(i)),'LineStyle',styles{iM},'Marker','*','MarkerIndices',F1_idx_sk,'Color',cols{iM})
             hold on
             legend(methods,'Location','BestOutside')
         end
