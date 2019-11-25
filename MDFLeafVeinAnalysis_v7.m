@@ -1,4 +1,4 @@
-%function results = MDFLeafVeinAnalysis_v6(FolderName,micron_per_pixel,DownSample,threshold,ShowFigs,ExportFigs,FullLeaf,FullMetrics)
+function results = MDFLeafVeinAnalysis_v6(FolderName,micron_per_pixel,DownSample,threshold,ShowFigs,ExportFigs,FullLeaf,FullMetrics)
 %% set up directories
 dir_out_images = ['..' filesep 'summary' filesep 'images' filesep];
 dir_out_width = ['..' filesep 'summary' filesep 'width' filesep];
@@ -11,7 +11,7 @@ E_width = 1;
 %% set up default colour map
 cmap = jet(256);
 cmap(1,:) = 0;
-%% initialise main program
+%% load in the image files
 step = 0;
 warning off
 % Load in the images
@@ -76,11 +76,11 @@ disp(['Step ' num2str(step) ': polygon analysis'])
 [areole_stats,polygon_stats] = fnc_polygon_analysis(bw_polygons,bw_areoles, polygon_LM,FullMetrics);
 % construct color-coded image based on log area for display
 im_areoles_rgb = fnc_polygon_image(areole_stats, sk_polygon, total_area_mask);
-% im_polygons_rgb = fnc_polygon_image(polygon_stats, sk_polygon, total_area_mask);
+im_polygons_rgb = fnc_polygon_image(polygon_stats, sk_polygon, total_area_mask);
 %% convert to an areole graph and a polygon graph
 step = step+1;
 disp(['Step ' num2str(step) ': Dual graph'])
-[G_polygons,polygon_LM] = fnc_area_graph(G_veins,polygon_stats,polygon_LM);
+[G_polygons,polygon_LM2] = fnc_area_graph(G_veins,polygon_stats,polygon_LM);
 [G_areoles,~] = fnc_area_graph(G_veins,areole_stats,polygon_LM);
 %% collect summary statistics into a results array
 step = step+1;
@@ -117,15 +117,16 @@ end
 %% Hierarchical loop decomposition
 step = step+1;
 disp(['Step ' num2str(step) ': Hierarchical loop decomposition'])
-[G_HLD, parent] = fnc_HLD(G_veins, G_polygons, polygon_stats, areole_stats, polygon_LM, bw_polygons, micron_per_pixel);
+[G_HLD, parent] = fnc_HLD(G_veins, G_polygons, polygon_stats, areole_stats, polygon_LM2, bw_polygons, micron_per_pixel);
 save([dir_out_HLD FolderName '_HLD_results.mat'],'G_HLD','parent')
 %% HLD display
 if ShowFigs == 1 && ExportFigs == 0
     display_HLD(G_polygons,im_cnn,G_HLD,FullLeaf,[dir_out_HLD FolderName '_HLD'],ExportFigs);
+%   display_HLD_figure(G_polygons,im_cnn,G_HLD,FullLeaf,[dir_out_HLD FolderName '_HLD_2'],ExportFigs);
 end
 if ExportFigs == 1
-    display_HLD(G_polygons,im_cnn,G_HLD,FullLeaf,[dir_out_HLD FolderName '_HLD'],ExportFigs);
-    %     display_HLD_figure(G_polygons,im_cnn,G_HLD,FullLeaf,[dir_out_HLD FolderName '_HLD_2'],ExportFigs);
+     display_HLD(G_polygons,im_cnn,G_HLD,FullLeaf,[dir_out_HLD FolderName '_HLD'],ExportFigs);
+%    display_HLD_figure(G_polygons,im_cnn,G_HLD,FullLeaf,[dir_out_HLD FolderName '_HLD_2'],ExportFigs);
 end
 %% save results to Excel
 step = step+1;
@@ -146,7 +147,7 @@ writetable(G_HLD.Nodes,[dir_out_data FolderName '_results.xlsx'],'FileType','spr
 % dir_in = pwd;
 % %xls_delete_sheets([dir_in filesep FolderName '_results.xlsx'],{'Sheet1','Sheet2','Sheet3'})
 % cd(dir_current);
-%end
+end
 
 function [im,im_cnn,bw_mask,bw_vein,bw_roi,bw_GT] = fnc_load_CNN_images(FolderName,DownSample)
 % get the contents of the directory
@@ -861,7 +862,7 @@ stats = regionprops(CC, 'Area');
 idx = find([stats.Area] > 100);
 bw_polygons  = ismember(labelmatrix(CC), idx);
 % The areoles exclude the full width of the veins
-bw_areoles = ~bw_cnn & total_area_mask & bw_polygons ;
+bw_areoles = ~bw_cnn & total_area_mask & bw_polygons;
 % remove any orphan pixels
 bw_areoles = bwmorph(bw_areoles,'clean');
 % trim the skeleton to match
@@ -874,13 +875,18 @@ LM(sk_polygon) = NaN;
 % find the neighbours of each edge
 Neighbour1 = colfilt(LM,[3 3],'sliding',@max);
 Neighbour2 = colfilt(LM,[3 3],'sliding',@(x) min(x,[],'Omitnan'));
+% Note some neighbours may link to the excluded areas and have a value of 0
 % add the neighbours to the graph
 G_veins.Edges.Ai = Neighbour1(G_veins.Edges.M_pix);
 G_veins.Edges.Aj = Neighbour2(G_veins.Edges.M_pix);
-% replace the skeleton pixels
+% replace the skeleton pixels with zero
 LM(sk_polygon) = 0;
-% dilate the area to include the pixel skeleton
-polygon_LM = imdilate(LM, [0 1 0; 1 1 1; 0 1 0]);
+% dilate the label matrix to include the pixel skeleton
+% LM = imdilate(LM, [0 1 0; 1 1 1; 0 1 0]);
+% polygon_LM = imdilate(LM, [0 1 0; 1 1 1; 0 1 0]);
+polygon_LM = imdilate(LM,ones(3));
+% trim off any extension beyond the boundary
+polygon_LM = polygon_LM.*total_area_mask;
 end
 
 function im_polygons_rgb = fnc_polygon_image(polygon_stats, sk_polygon, total_area_mask)
@@ -922,6 +928,7 @@ if FullMetrics == 0
     polygon_stats = regionprops(polygon_LM, ...
         'Area', ...
         'Centroid', ...
+        'Circularity', ...
         'Eccentricity', ...
         'EquivDiameter', ...
         'MajorAxisLength', ...
@@ -933,6 +940,7 @@ else
     P_stats = regionprops(polygon_LM, ...
         'Area', ...
         'Centroid', ...
+        'Circularity', ...
         'ConvexArea', ...
         'Eccentricity', ...
         'EquivDiameter', ...
@@ -943,7 +951,14 @@ else
         'Solidity', ...
         'PixelIdxList');
     % get the maximum distance to the skeleton for each area
-    D_stats = regionprops(polygon_LM,bwdist(~bw_polygons),'MaxIntensity','MeanIntensity');
+    D_stats = regionprops(polygon_LM,bwdist(~bw_polygons)+0.5,'MaxIntensity','MeanIntensity');
+    % check for any empty values as these will switch the format from a
+    % number to a cell
+    test4empty = cellfun(@isempty,{D_stats.MaxIntensity});
+    if any(test4empty)
+        % replace the empty ell with the minimum distance of 0.5 pixel
+        [D_stats(test4empty).MaxIntensity] = deal(0.5);
+    end
     % rename the fields
     [D_stats.('MaxDistance')] = D_stats.('MaxIntensity');
     D_stats = rmfield(D_stats,'MaxIntensity');
@@ -955,12 +970,9 @@ else
     polygon_stats = cell2struct([struct2cell(P_stats);struct2cell(D_stats)],names,1);
 end
 % calculate additional parameters
-% polygon_stats = P_stats;
 ID = num2cell(1:length(polygon_stats));
-Circularity = num2cell((4.*pi.*[polygon_stats.Area])./([polygon_stats.Perimeter].^2));
 Elongation = num2cell([polygon_stats.MajorAxisLength]./[polygon_stats.MinorAxisLength]);
 Roughness = num2cell(([polygon_stats.Perimeter].^2)./[polygon_stats.Area]);
-[polygon_stats(:).Circularity] = deal(Circularity{:});
 [polygon_stats(:).Elongation] = deal(Elongation{:});
 [polygon_stats(:).Roughness] = deal(Roughness{:});
 [polygon_stats(:).ID] = deal(ID{:});
@@ -975,6 +987,7 @@ if FullMetrics == 0
     areole_stats = regionprops(areole_LM, ...
         'Area', ...
         'Centroid', ...
+        'Circularity', ...
         'Eccentricity', ...
         'EquivDiameter', ...
         'MajorAxisLength', ...
@@ -986,6 +999,7 @@ else
     A_stats = regionprops(areole_LM, ...
         'Area', ...
         'Centroid', ...
+        'Circularity', ...
         'ConvexArea', ...
         'Eccentricity', ...
         'EquivDiameter', ...
@@ -996,14 +1010,12 @@ else
         'Solidity', ...
         'PixelIdxList');
     % get the maximum distance to the skeleton for each area
-    D_stats = regionprops(areole_LM,bwdist(~bw_areoles),'MaxIntensity','MeanIntensity');
-    % find any empty cells in the maxIntensity and replace with nan. These
-    % occur when an area is present in the polygons, but without a
-    % corresponding areole. This ensures that the metric is saved as a number
-    % rather than a cell array
+    D_stats = regionprops(areole_LM,bwdist(~bw_areoles)+0.5,'MaxIntensity','MeanIntensity');
+    % find any empty cells in the maxIntensity and replace with nan. This
+    % ensures that the metric is saved as a number rather than a cell array
     test4empty = cellfun(@isempty,{D_stats.MaxIntensity});
     if any(test4empty)
-        [D_stats(test4empty).MaxIntensity] = deal(nan);
+        [D_stats(test4empty).MaxIntensity] = deal(0.5);
     end
     % rename the fields
     [D_stats.('MaxDistance')] = D_stats.('MaxIntensity');
@@ -1017,10 +1029,8 @@ else
 end
 % calculate additional parameters
 ID = num2cell(1:length(areole_stats));
-Circularity = num2cell((4.*pi.*[areole_stats.Area])./([areole_stats.Perimeter].^2));
 Elongation = num2cell([areole_stats.MajorAxisLength]./[areole_stats.MinorAxisLength]);
 Roughness = num2cell(([areole_stats.Perimeter].^2)./[areole_stats.Area]);
-[areole_stats(:).Circularity] = deal(Circularity{:});
 [areole_stats(:).Elongation] = deal(Elongation{:});
 [areole_stats(:).Roughness] = deal(Roughness{:});
 [areole_stats(:).ID] = deal(ID{:});
@@ -1048,6 +1058,9 @@ names = {'EndNodes' 'Width' 'Name'};
 i = min(G_veins.Edges.Ai, G_veins.Edges.Aj);
 j = max(G_veins.Edges.Ai, G_veins.Edges.Aj);
 edges = [i j G_veins.Edges.Width G_veins.Edges.Name];
+% if any edge links to an excluded region Ai or Aj will have a value of
+% zero. Therefore exclude these edges from analysis.
+edges(i==0 | j==0,:) = [];
 % sort by the edge width and keep the smallest
 edges = sortrows(edges,3);
 [~,idx] = unique(edges(:,1:2),'rows');
@@ -1062,10 +1075,11 @@ edges(idx,:) = [];
 EdgeTable = table([edges(:,1) edges(:,2)],edges(:,3),edges(:,4), 'VariableNames', names);
 G_areas = graph(EdgeTable,NodeTable,'OmitSelfLoops');
 % check the number of components and only keep the largest
-CC = conncomp(G_areas);
+[CC, binsizes] = conncomp(G_areas);
+[~,GCC] = max(binsizes);
 % only keep the connected areas in the label matrix
-LM(~ismember(LM,G_areas.Nodes.ID(CC==1))) = 0;
-G_areas = rmnode(G_areas,find(CC>1));
+LM(~ismember(LM,G_areas.Nodes.ID(CC==GCC))) = 0;
+G_areas = rmnode(G_areas,find(CC~=GCC));
 end
 
 function T = fnc_summary_veins(G_veins,total_area,polygon_area,micron_per_pixel)
@@ -1232,28 +1246,57 @@ PCC.Connectivity = 4;
 PCC.ImageSize = size(polygon_LM);
 PCC.NumObjects = 1;
 PCC.PixelIdxList = {};
-% find all the polygons on the boundary
-% % remove any disconnected areas from the label matrix
-% Didx = ismember(LM,find(CC>1));
+% find all the polygons on the boundary. The label matrix has already been
+% dilated to remove the internal skeleton lines, so the only background
+% values will be at the edges or internal masked regions. If these are dilated using
+% a 3x3 kernel, they should overlap any polygons adjacent to the boundary.
+% These can then be extracted using the dilated boundary region as seed points.
+% The set of polygons touching the boundary can then be used to set a
+% boundary flag in the G_polygons graph.
 boundary = polygon_LM==0;
-boundary = bwareafilt(boundary,[200 inf]);
+%boundary = bwmorph(boundary,'clean');
+%boundary = bwareafilt(boundary,[200 inf]);
 boundary = imdilate(boundary,ones(3));
 [r,c] = find(boundary);
 B_polygons = bwselect(bw_polygons,c,r,4);
+B_polygons = imerode(B_polygons, ones(3));
+% get the ID of the boundary polygons from the label matrix
 Bidx = unique(polygon_LM(B_polygons));
-% Bidx(Bidx==0) = [];
-% temp = ismember(G_polygons.Nodes.ID,Bidx);
-% temp = zeros(numnodes(G_polygons),1);
-% temp(Bidx) = 1;
-% add in a boundary flag if touching the boundary
+Bidx(Bidx==0) = [];
+%
+% % % % get the pixelidxlist from the polygon_stats array to check the correct
+% % % % polygons have been identified
+% % % Bpix = cat(1,polygon_stats(Bidx).PixelIdxList);
+% % % Bim = zeros(size(B_polygons));
+% % % Bim(Bpix) = 1;
+% % % figure
+% % % imshow(single(cat(3,B_polygons,bw_polygons,Bim)))
+% % % %
+% add in a boundary flag if the node is a boundary polygon
 G_polygons.Nodes.Boundary = ismember(G_polygons.Nodes.ID,Bidx);
-% G_polygons.Nodes.Boundary(Bidx,1) = 1;
-% select the largest component of the polygon graph
-CC = conncomp(G_polygons);
-idx = find(CC==1);
-G_polygons = subgraph(G_polygons,idx);
-% extract the same component from the stats arrays
-polygon_stats = polygon_stats(idx);
+% % % % extract a subgraph containing just the non-boundary polygons
+% % % SGidx = find(G_polygons.Nodes.Boundary==0);
+% % % % construct a sub-graph with these nodes
+% % % SG = subgraph(G_polygons,SGidx);
+% % % % select the largest component of the sub-graph
+% % % [CC, binsizes] = conncomp(SG);
+% % % [~,GCC] = max(binsizes);
+% % % SG_GCC = subgraph(SG,find(CC==GCC));
+[CC, binsizes] = conncomp(G_polygons);
+[~,GCC] = max(binsizes);
+SG_GCC = subgraph(G_polygons,find(CC==GCC));
+% % % %
+% % % hold on
+% % % plot(SG_GCC, 'XData',SG_GCC.Nodes.node_X_pix,'YData',SG_GCC.Nodes.node_Y_pix, ...
+% % %     'NodeColor','r','MarkerSize',1,'Marker', 'none', 'NodeLabel', [], ...
+% % %     'EdgeColor','r','EdgeAlpha',1,'EdgeLabel', [],'LineWidth',1);
+% % % scatter(SG_GCC.Nodes.node_X_pix(~SG_GCC.Nodes.Boundary),SG_GCC.Nodes.node_Y_pix(~SG_GCC.Nodes.Boundary),48,'y','o')
+% % % scatter(SG_GCC.Nodes.node_X_pix(SG_GCC.Nodes.Boundary),SG_GCC.Nodes.node_Y_pix(SG_GCC.Nodes.Boundary),48,'m','o')
+% % % %
+%
+% extract the same component from the stats arrays. These arrays contain
+% data for all polygons orginally identified and given a unique number (ID)
+polygon_stats = polygon_stats(SG_GCC.Nodes.ID);
 % set the weights in the vein graph to length
 G_veins.Edges.Weight = G_veins.Edges.Length;
 % Keep veins from the vein graph that form part of the polygon_graph. These
@@ -1261,24 +1304,31 @@ G_veins.Edges.Weight = G_veins.Edges.Length;
 % network, but will exclude edges from incomplete polygons on the boundary
 % or disconnected polygons. Edges should have Ai and/or
 % Aj corresponding to a polygon node ID.
-Vidx = ismember(G_veins.Edges.Ai,idx) | ismember(G_veins.Edges.Aj,idx);
+%Vidx = ismember(G_veins.Edges.Ai,idx) | ismember(G_veins.Edges.Aj,idx);
+Vidx = ismember(G_veins.Edges.Ai,SG_GCC.Nodes.ID) | ismember(G_veins.Edges.Aj,SG_GCC.Nodes.ID);
 G_veins = rmedge(G_veins,find(~Vidx));
 % only keep veins that are still connected to the largest component
-CC = conncomp(G_veins);
-[N,~] = histcounts(CC,max(CC));
-[~,idx] = max(N);
-G_veins = subgraph(G_veins,find(CC==idx));
+[CC, binsizes] = conncomp(G_veins);
+[~,GCC] = max(binsizes);
+% [N,~] = histcounts(CC,max(CC));
+% [~,idx] = max(N);
+G_veins = subgraph(G_veins,find(CC==GCC));
+% % % %
+% % % plot(G_veins, 'XData',G_veins.Nodes.node_X_pix,'YData',G_veins.Nodes.node_Y_pix, ...
+% % %     'NodeColor','b','MarkerSize',1,'Marker', 'none', 'NodeLabel', [], ...
+% % %     'EdgeColor','b','EdgeAlpha',1,'EdgeLabel', [],'LineWidth',1);
+% % % %
 % calculate the initial length and MST ratio for the veins
 L = sum(G_veins.Edges.Length);
 MST = minspantree(G_veins,'method','sparse');
 MSTL = sum(MST.Edges.Weight)/L;
 % get the number of nodes and edge in the dual graph
-nnP = numnodes(G_polygons);
-neP = numedges(G_polygons);
+nnP = numnodes(SG_GCC);
+neP = numedges(SG_GCC);
 parent = zeros(1,nnP);
 width_threshold = zeros((2*nnP)-1,1);
-node_Boundary = [G_polygons.Nodes{:,'Boundary'}; zeros(nnP-1,1)];
-node_Area = [G_polygons.Nodes{:,'Area'}; zeros(nnP-1,1)];
+node_Boundary = [SG_GCC.Nodes{:,'Boundary'}; zeros(nnP-1,1)];
+node_Area = [SG_GCC.Nodes{:,'Area'}; zeros(nnP-1,1)];
 node_Degree = [ones(nnP,1); zeros(nnP-1,1)];
 degree_Asymmetry = zeros(nnP*2-1,1);
 area_Asymmetry = zeros(nnP*2-1,1);
@@ -1292,10 +1342,10 @@ MSTRatio = [repmat(MSTL,nnP,1); zeros(nnP-1,1)];
 areole_stats(nnP.*2-1).Area = 0;
 polygon_stats(nnP.*2-1).Area = 0;
 % order the edges by width in the polygon graph
-[W,idx] = sort(G_polygons.Edges{:,'Width'});
+[W,idx] = sort(SG_GCC.Edges{:,'Width'});
 % sort the edge nodes and edge name to match the ordered widths
-nodei = G_polygons.Edges{idx,'EndNodes'}(:,1);
-nodej = G_polygons.Edges{idx,'EndNodes'}(:,2);
+nodei = SG_GCC.Edges{idx,'EndNodes'}(:,1);
+nodej = SG_GCC.Edges{idx,'EndNodes'}(:,2);
 % set up a list of the initial edges sorted by width
 ET = [nodei nodej W];
 % start the index for the new node (Nk) to follow on the number of existing
@@ -1307,6 +1357,9 @@ P_PIL = {polygon_stats.PixelIdxList};
 PCC.NumObjects = length(P_PIL);
 PCC.PixelIdxList  = {polygon_stats.PixelIdxList}';
 LM = labelmatrix(PCC);
+% % % %
+% % % visboundaries(LM>0);drawnow
+% % % %
 P_stats = regionprops('table',LM,'Area','Centroid','Perimeter','MajorAxisLength','MinorAxisLength','Circularity','Eccentricity','Orientation');
 % set up the endnodes
 EndNodes = zeros(nnP*2-2,2);
@@ -1366,19 +1419,14 @@ for iE = 1:neP
         PCC.NumObjects = 1;
         PCC.PixelIdxList  = P_PIL(Nk);
         P_stats(Nk,:) = regionprops('table',PCC,'Area','Centroid','Perimeter','MajorAxisLength','MinorAxisLength','Circularity','Eccentricity','Orientation');
-        % check for a circularity problem
-        if P_stats{Nk,'Circularity'}>3
-            P_PIL(Nk)
-        end
         % find edges in the vein graph up to and including this edge width
         Eidx = G_veins.Edges.Width <= width_threshold(Nk,1);
         % remove these edges from the graph
         G_veins = rmedge(G_veins,find(Eidx));
         % only keep veins that are still connected to the largest component
-        CC = conncomp(G_veins);
-        [N,~] = histcounts(CC,max(CC));
-        [~,idx] = max(N);
-        G_veins = subgraph(G_veins,find(CC==idx));
+        [CC, binsizes] = conncomp(G_veins);
+        [~,GCC] = max(binsizes);
+        G_veins = subgraph(G_veins,find(CC==GCC));
         % replace any occurrences of the nodes that have fused with
         % the new node ID
         idx = G_veins.Edges.Ai == Ni | G_veins.Edges.Ai == Nj;
@@ -1396,11 +1444,11 @@ for iE = 1:neP
         ET(1,:) = [];
     end
 end
+assignin('base','P_PIL',P_PIL)
 % complete links to the root node
 parent(end+1) = Nk+1;
 parent = double(fliplr(max(parent(:)) - parent));
 % calculate additional metrics
-%Circularity = (4.*pi.*[P_stats.Area])./([P_stats.Perimeter].^2);
 Elongation = [P_stats.MajorAxisLength]./[P_stats.MinorAxisLength];
 Roughness = ([P_stats.Perimeter].^2)./[P_stats.Area];
 % assemble the HLD graph object
