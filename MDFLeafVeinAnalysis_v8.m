@@ -1,4 +1,4 @@
-%function results = MDFLeafVeinAnalysis_v7(FolderName,micron_per_pixel,DownSample,threshold,ShowFigs,ExportFigs,FullLeaf,FullMetrics)
+function results = MDFLeafVeinAnalysis_v7(FolderName,micron_per_pixel,DownSample,threshold,ShowFigs,ExportFigs,FullLeaf,FullMetrics)
 %% set up directories
 dir_out_images = ['..' filesep 'summary' filesep 'images' filesep];
 dir_out_width = ['..' filesep 'summary' filesep 'width' filesep];
@@ -164,7 +164,7 @@ writetable(G_HLD.Nodes,[dir_out_data FolderName '_results.xlsx'],'FileType','spr
 % dir_in = pwd;
 % %xls_delete_sheets([dir_in filesep FolderName '_results.xlsx'],{'Sheet1','Sheet2','Sheet3'})
 % cd(dir_current);
-%endclc
+end
 
 function [im,im_cnn,bw_mask,bw_vein,bw_roi,bw_GT] = fnc_load_CNN_images(FolderName,DownSample)
 % get the contents of the directory
@@ -1612,7 +1612,7 @@ end
 drawnow
 if ExportFigs
     warning('off','MATLAB:prnRenderer:opengl');
-    export_fig(name,'-png','-r600',hfig)
+    export_fig(name,'-png','-pdf','-r300',hfig)
     %     saveas(hfig,name)
 end
 delete(hfig);
@@ -1747,7 +1747,7 @@ end
 drawnow
 if ExportFigs
     warning('off','MATLAB:prnRenderer:opengl');
-    export_fig(name,'-png','-r600','-painters',hfig)
+    export_fig(name,'-png','-pdf','-r300','-painters',hfig)
     %     saveas(hfig,name)
 end
 delete(hfig);
