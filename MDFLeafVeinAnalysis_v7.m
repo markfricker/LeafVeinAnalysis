@@ -1,4 +1,4 @@
-function results = MDFLeafVeinAnalysis_v6(FolderName,micron_per_pixel,DownSample,threshold,ShowFigs,ExportFigs,FullLeaf,FullMetrics)
+%function results = MDFLeafVeinAnalysis_v7(FolderName,micron_per_pixel,DownSample,threshold,ShowFigs,ExportFigs,FullLeaf,FullMetrics)
 %% set up directories
 dir_out_images = ['..' filesep 'summary' filesep 'images' filesep];
 dir_out_width = ['..' filesep 'summary' filesep 'width' filesep];
@@ -53,17 +53,19 @@ disp(['Step ' num2str(step) ': Refining width'])
 %% calculate a pixel skeleton for the center weighted edges
 step = step+1;
 disp(['Step ' num2str(step) ': Colour-coded skeleton'])
-[CW_pixels,im_width,coded] = fnc_coded_skeleton(im,sk,bw_mask,G_veins,edgelist,edgelist_center,sk_width,cmap);
+[CW_pixels,im_width,coded_CW,coded_FW] = fnc_coded_skeleton(im,sk,bw_mask,G_veins,edgelist,edgelist_center,sk_width,cmap);
 %% display the weighted network
 step = step+1;
 disp(['Step ' num2str(step) ': Image display'])
 if ExportFigs == 1
     step = step+1;
     disp(['Step ' num2str(step) ': Saving width images'])
-    [nY,nX,~] = size(coded);
-    % save the color-coded width image
-    fout = [dir_out_images FolderName '_width.png'];
-    imwrite(coded,fout,'png','Xresolution',nX,'Yresolution',nY)
+    [nY,nX,~] = size(coded_CW);
+    % save the color-coded width images
+    fout = [dir_out_images FolderName '_centerwidth.png'];
+    imwrite(coded_CW,fout,'png','Xresolution',nX,'Yresolution',nY)
+    fout = [dir_out_images FolderName '_fullwidth.png'];
+    imwrite(coded_FW,fout,'png','Xresolution',nX,'Yresolution',nY)
     % save the greyscale width array as a matlab file. Note outside the
     % masked area is now coded as -1
     save([dir_out_width FolderName '_Width_array'],'im_width')
@@ -76,7 +78,7 @@ disp(['Step ' num2str(step) ': polygon analysis'])
 [areole_stats,polygon_stats] = fnc_polygon_analysis(bw_polygons,bw_areoles, polygon_LM,FullMetrics);
 % construct color-coded image based on log area for display
 im_areoles_rgb = fnc_polygon_image(areole_stats, sk_polygon, total_area_mask);
-im_polygons_rgb = fnc_polygon_image(polygon_stats, sk_polygon, total_area_mask);
+%im_polygons_rgb = fnc_polygon_image(polygon_stats, sk_polygon, total_area_mask);
 %% convert to an areole graph and a polygon graph
 step = step+1;
 disp(['Step ' num2str(step) ': Dual graph'])
@@ -109,7 +111,7 @@ if ShowFigs == 1
     warning off images:initSize:adjustingMag
     warning off MATLAB:LargeImage
     skel = imerode(single(cat(3,1-skTree,1-skLoop,1-skTree)), ones(5));
-    images = {im,max(im_cnn(:))-im_cnn,skel,coded,im_areoles_rgb,max(im_cnn(:))-im_cnn};
+    images = {im,max(im_cnn(:))-im_cnn,skel,coded_FW,im_areoles_rgb,max(im_cnn(:))-im_cnn};
     graphs = {'none','none','none','none','none','Width'};
     titles = {'original','CNN','Skeleton','width','areoles','dual graph'};
     display_figure(images,graphs,titles,G_polygons,E_width,[1:6],[dir_out_images FolderName '_Figure'],ExportFigs);
@@ -117,7 +119,7 @@ end
 %% Hierarchical loop decomposition
 step = step+1;
 disp(['Step ' num2str(step) ': Hierarchical loop decomposition'])
-[G_HLD, parent] = fnc_HLD(G_veins, G_polygons, polygon_stats, areole_stats, polygon_LM2, bw_polygons, micron_per_pixel);
+[G_HLD, HLD_image,  parent] = fnc_HLD(G_veins, G_polygons, polygon_stats, areole_stats, polygon_LM2, bw_polygons, micron_per_pixel);
 save([dir_out_HLD FolderName '_HLD_results.mat'],'G_HLD','parent')
 %% HLD display
 if ShowFigs == 1 && ExportFigs == 0
@@ -127,6 +129,21 @@ end
 if ExportFigs == 1
      display_HLD(G_polygons,im_cnn,G_HLD,FullLeaf,[dir_out_HLD FolderName '_HLD'],ExportFigs);
 %    display_HLD_figure(G_polygons,im_cnn,G_HLD,FullLeaf,[dir_out_HLD FolderName '_HLD_2'],ExportFigs);
+end
+%%
+if ExportFigs == 1
+    step = step+1;
+    disp(['Step ' num2str(step) ': Saving HLD image'])
+    [nY,nX,~] = size(HLD_image);
+    % save the color-coded width images
+    fout = [dir_out_images FolderName '_HLD_level.png'];
+    mx = double(max(HLD_image(:)));
+    cmap = jet(mx+1);
+    cmap(1,:) = 0;
+    HLD_image = colfilt(HLD_image,[3 3],'sliding',@max);
+    HLD_image(bw_polygons) = 0;
+    imshow(ind2rgb(HLD_image,cmap))
+    imwrite(ind2rgb(HLD_image,cmap),fout,'png','Xresolution',nX,'Yresolution',nY)
 end
 %% save results to Excel
 step = step+1;
@@ -147,7 +164,7 @@ writetable(G_HLD.Nodes,[dir_out_data FolderName '_results.xlsx'],'FileType','spr
 % dir_in = pwd;
 % %xls_delete_sheets([dir_in filesep FolderName '_results.xlsx'],{'Sheet1','Sheet2','Sheet3'})
 % cd(dir_current);
-end
+%endclc
 
 function [im,im_cnn,bw_mask,bw_vein,bw_roi,bw_GT] = fnc_load_CNN_images(FolderName,DownSample)
 % get the contents of the directory
@@ -758,11 +775,12 @@ G_veins.Nodes.node_Omid_Omaj = pi - abs(pi - abs(G_veins.Nodes.node_Omid-G_veins
 G_veins.Nodes.node_Omin_Omid = pi - abs(pi - abs(G_veins.Nodes.node_Omin-G_veins.Nodes.node_Omid));
 end
 
-function [CW_pixels,width,coded] = fnc_coded_skeleton(im,sk,bw_mask,G_veins,edgelist,edgelist_center,sk_width,cmap)
+function [gray_CW,width,coded_CW,coded_FW] = fnc_coded_skeleton(im,sk,bw_mask,G_veins,edgelist,edgelist_center,sk_width,cmap)
 [nY,nX] = size(sk);
 % set up a blank image
-CW_pixels = zeros([nY,nX], 'single');
-CW_scaled = zeros([nY,nX], 'single');
+gray_CW = zeros([nY,nX], 'single');
+CW_center = zeros([nY,nX], 'single');
+CW_full = zeros([nY,nX], 'single');
 width = zeros([nY,nX], 'single');
 % get the value of the edges from the graph. These are sorted
 % automatically when the graph is set up in order of node i
@@ -770,23 +788,22 @@ E = G_veins.Edges.Width;
 % get just the edges (not any features)
 E_idx = contains(G_veins.Edges.Type,'E');
 E = E(E_idx);
-% get the linear pixel index for each edge
-% excluding the features
-P_idx = cellfun(@(x) sub2ind([nY nX],x(:,1),x(:,2)),edgelist_center(E_idx),'UniformOutput',0);
+% get the linear pixel index for the center width each edge excluding the features
+CW_idx = cellfun(@(x) sub2ind([nY nX],x(:,1),x(:,2)),edgelist_center(E_idx),'UniformOutput',0);
 % concatenate all the pixels indices to give a single vector
-P_all = cat(1,P_idx{:});
+P_CW = cat(1,CW_idx{:});
 % calculate an edge width skeleton based on the central width
 % for the selected edges
-V_int = num2cell(E);
+V_CW = num2cell(E);
 % duplicate the value for the number of pixels in the center part of each edge
-V_idx = cellfun(@(x,y) repmat(y,length(x),1), P_idx, V_int','UniformOutput',0);
+V_coded_idx = cellfun(@(x,y) repmat(y,length(x),1), CW_idx, V_CW','UniformOutput',0);
 % concatenate all the values into a single vector
-V_all = cat(1,V_idx{:});
+V_CW_all = cat(1,V_coded_idx{:});
 % set the edge values to the central width for the center part of each
 % edge. The CW_pixels image is a grayscale image with the intensity
 % of the skeleton making up each edge set to the width in pixels. The
 % overlap region is set to zero.
-CW_pixels(P_all) = single(V_all);
+gray_CW(P_CW) = single(V_CW_all);
 % To construct the color-coded skeleton, normalise the range between 2 and
 % 256 as an index into the colourmap
 Emin = min(E);
@@ -795,39 +812,42 @@ cmap_idx = ceil(254.*((E-Emin)./(Emax-Emin)))+2;
 % set any nan values to 1
 cmap_idx(isnan(cmap_idx)) = 1;
 % convert to a cell array
-V_int = num2cell(cmap_idx);
+V_coded = num2cell(cmap_idx);
 % duplicate the value for the number of pixels in each edge
-V_idx = cellfun(@(x,y) repmat(y,length(x),1), P_idx, V_int','UniformOutput',0);
+V_coded_idx = cellfun(@(x,y) repmat(y,length(x),1), CW_idx, V_coded','UniformOutput',0);
 % concatenate all the values into a single vector
-V_all = cat(1,V_idx{:});
+V_coded_all = cat(1,V_coded_idx{:});
 % set the edge values to the central width for each edge in the image
 % scaled between the min and the max
-CW_scaled(P_all) = single(V_all);
+CW_center(P_CW) = single(V_coded_all);
 if sk_width > 1
     sk_D = imdilate(sk, ones(sk_width));
-    CW_scaled = imdilate(CW_scaled, ones(sk_width));
+    CW_center = imdilate(CW_center, ones(sk_width));
 else
     sk_D = sk;
 end
 im2 = im;%uint8(255.*im);
 im2(sk_D) = 0;
 im_rgb = uint8(255.*ind2rgb(im2,gray(256)));
-sk_rgb = uint8(255.*ind2rgb(uint8(CW_scaled),cmap));
-coded = imadd(im_rgb,sk_rgb);
+sk_rgb = uint8(255.*ind2rgb(uint8(CW_center),cmap));
+coded_CW = imadd(im_rgb,sk_rgb);
 % add the boundaries of the mask
-coded = imoverlay(coded,bwperim(bw_mask),'m');
+coded_CW = imoverlay(coded_CW,bwperim(bw_mask),'m');
 % Repeat the process but this time calculate the full pixel skeleton
 % (including the overlap regions) and coded by the center weight for
-% export. Get the linear pixel index for each edge excluding the features
-P_idx = cellfun(@(x) sub2ind([nY nX],x(:,1),x(:,2)),edgelist(E_idx),'UniformOutput',0);
+% export. Get the linear pixel index for the full width each edge excluding the features
+FW_idx = cellfun(@(x) sub2ind([nY nX],x(:,1),x(:,2)),edgelist(E_idx),'UniformOutput',0);
 % concatenate all the pixels indices to give a single vector
-P_all = cat(1,P_idx{:});
+P_FW = cat(1,FW_idx{:});
+% calculate an edge width skeleton based on the central width
+% for the selected edges
+V_FW = num2cell(E);
 % duplicate the value for the number of pixels in each edge
-V_idx = cellfun(@(x,y) repmat(y,length(x),1), P_idx, V_int','UniformOutput',0);
+V_FW_idx = cellfun(@(x,y) repmat(y,length(x),1), FW_idx, V_FW','UniformOutput',0);
 % concatenate all the values into a single vector
-V_all = cat(1,V_idx{:});
+V_FW_all = cat(1,V_FW_idx{:});
 % set the edge values to the central width for each edge in the image
-width(P_all) = single(V_all);
+width(P_FW) = single(V_FW_all);
 % make sure that the junctions are set to the local maximum, so that
 % junctions are preserved as part of the strongest edge
 temp = colfilt(width,[3 3],'sliding',@max);
@@ -837,6 +857,28 @@ bp = bwmorph(sk,'branchpoints');
 width(bp) = temp(bp);
 % % set the masked regions to -1
 width(~bw_mask) = -1;
+%
+%Calculate complete coded skeleton image using the center-weighted width
+% duplicate the coded width value for the number of pixels in each full edge
+V_FW_idx = cellfun(@(x,y) repmat(y,length(x),1), FW_idx, V_coded','UniformOutput',0);
+% concatenate all the values into a single vector
+V_FW_all = cat(1,V_FW_idx{:});
+% set the edge values to the central width for each edge in the image
+CW_full(P_FW) = single(V_FW_all);
+% set the edge values to the central width for each edge in the image
+% scaled between the min and the max
+temp = colfilt(CW_full,[3 3],'sliding',@max);
+% The width image is a complete skeleton with no breaks in the overlap
+% region coded by the center-weighted thickness of the edge
+CW_full(bp) = temp(bp);
+if sk_width > 1
+    CW_full = imdilate(CW_full, ones(sk_width));
+end
+im_rgb = uint8(255.*ind2rgb(im,gray(256)));
+sk_rgb = uint8(255.*ind2rgb(uint8(CW_full),cmap));
+coded_FW = imadd(im_rgb,sk_rgb);
+% add the boundaries of the mask
+coded_FW = imoverlay(coded_FW,bwperim(bw_mask),'m');
 end
 
 function [G_veins, sk_polygon, bw_polygons, bw_areoles, total_area_mask, polygon_LM] = fnc_polygon_find(G_veins,bw_cnn,sk,skLoop,bw_mask)
@@ -1075,8 +1117,11 @@ edges(idx,:) = [];
 EdgeTable = table([edges(:,1) edges(:,2)],edges(:,3),edges(:,4), 'VariableNames', names);
 G_areas = graph(EdgeTable,NodeTable,'OmitSelfLoops');
 % check the number of components and only keep the largest
-[CC, binsizes] = conncomp(G_areas);
-[~,GCC] = max(binsizes);
+% [CC, binsizes] = conncomp(G_areas);
+% [~,GCC] = max(binsizes);
+CC = conncomp(G_areas);
+[N,~] = histcounts(CC,max(CC));
+[~,GCC] = max(N);
 % only keep the connected areas in the label matrix
 LM(~ismember(LM,G_areas.Nodes.ID(CC==GCC))) = 0;
 G_areas = rmnode(G_areas,find(CC~=GCC));
@@ -1238,7 +1283,7 @@ switch transform
 end
 end
 
-function [G_HLD, parent] = fnc_HLD(G_veins, G_polygons, polygon_stats, areole_stats, polygon_LM, bw_polygons, micron_per_pixel)
+function [G_HLD, HLD_image, parent] = fnc_HLD(G_veins, G_polygons, polygon_stats, areole_stats, polygon_LM, bw_polygons, micron_per_pixel)
 % set calibration factors
 mm = micron_per_pixel./1000;
 % construct a binary polygon CC object
@@ -1274,16 +1319,13 @@ Bidx(Bidx==0) = [];
 % % % %
 % add in a boundary flag if the node is a boundary polygon
 G_polygons.Nodes.Boundary = ismember(G_polygons.Nodes.ID,Bidx);
-% % % % extract a subgraph containing just the non-boundary polygons
-% % % SGidx = find(G_polygons.Nodes.Boundary==0);
-% % % % construct a sub-graph with these nodes
-% % % SG = subgraph(G_polygons,SGidx);
-% % % % select the largest component of the sub-graph
-% % % [CC, binsizes] = conncomp(SG);
+% select the largest component of the sub-graph
+% % % [CC, binsizes] = conncomp(G_polygons);
 % % % [~,GCC] = max(binsizes);
-% % % SG_GCC = subgraph(SG,find(CC==GCC));
-[CC, binsizes] = conncomp(G_polygons);
-[~,GCC] = max(binsizes);
+% % % SG_GCC = subgraph(G_polygons,find(CC==GCC));
+CC = conncomp(G_polygons);
+[N,~] = histcounts(CC,max(CC));
+[~,GCC] = max(N);
 SG_GCC = subgraph(G_polygons,find(CC==GCC));
 % % % %
 % % % hold on
@@ -1308,10 +1350,11 @@ G_veins.Edges.Weight = G_veins.Edges.Length;
 Vidx = ismember(G_veins.Edges.Ai,SG_GCC.Nodes.ID) | ismember(G_veins.Edges.Aj,SG_GCC.Nodes.ID);
 G_veins = rmedge(G_veins,find(~Vidx));
 % only keep veins that are still connected to the largest component
-[CC, binsizes] = conncomp(G_veins);
-[~,GCC] = max(binsizes);
-% [N,~] = histcounts(CC,max(CC));
-% [~,idx] = max(N);
+% % % [CC, binsizes] = conncomp(G_veins);
+% % % [~,GCC] = max(binsizes);
+CC = conncomp(G_veins);
+[N,~] = histcounts(CC,max(CC));
+[~,GCC] = max(N);
 G_veins = subgraph(G_veins,find(CC==GCC));
 % % % %
 % % % plot(G_veins, 'XData',G_veins.Nodes.node_X_pix,'YData',G_veins.Nodes.node_Y_pix, ...
@@ -1357,10 +1400,12 @@ P_PIL = {polygon_stats.PixelIdxList};
 PCC.NumObjects = length(P_PIL);
 PCC.PixelIdxList  = {polygon_stats.PixelIdxList}';
 LM = labelmatrix(PCC);
+% start the HLD_image with the pixel skeleton
+HLD_image = uint8(~bw_polygons);
 % % % %
 % % % visboundaries(LM>0);drawnow
 % % % %
-P_stats = regionprops('table',LM,'Area','Centroid','Perimeter','MajorAxisLength','MinorAxisLength','Eccentricity','Orientation');
+P_stats = regionprops('table',LM,'Area','Centroid','Perimeter','MajorAxisLength','MinorAxisLength','Eccentricity','Orientation','Image','BoundingBox','PixelList');
 % set up the endnodes
 EndNodes = zeros(nnP*2-2,2);
 % loop through all the edges, calculating the metrics
@@ -1418,14 +1463,19 @@ for iE = 1:neP
         % stats structures
         PCC.NumObjects = 1;
         PCC.PixelIdxList  = P_PIL(Nk);
-        P_stats(Nk,:) = regionprops('table',PCC,'Area','Centroid','Perimeter','MajorAxisLength','MinorAxisLength','Eccentricity','Orientation');
+        P_stats(Nk,:) = regionprops('table',PCC,'Area','Centroid','Perimeter','MajorAxisLength','MinorAxisLength','Eccentricity','Orientation','Image','BoundingBox','PixelList');
+        % construct an image of the HLD level
+        B = bwboundaries(P_stats.Image{Nk,1});
+        Ridx = sub2ind(size(HLD_image),floor(B{1}(:,1)+P_stats.BoundingBox(Nk,2)),floor(B{1}(:,2)+P_stats.BoundingBox(Nk,1)));
+        HLD_image(Ridx) = HLD_image(Ridx)+1;
         % find edges in the vein graph up to and including this edge width
         Eidx = G_veins.Edges.Width <= width_threshold(Nk,1);
         % remove these edges from the graph
         G_veins = rmedge(G_veins,find(Eidx));
         % only keep veins that are still connected to the largest component
-        [CC, binsizes] = conncomp(G_veins);
-        [~,GCC] = max(binsizes);
+        CC = conncomp(G_veins);
+        [N,~] = histcounts(CC,max(CC));
+        [~,GCC] = max(N);
         G_veins = subgraph(G_veins,find(CC==GCC));
         % replace any occurrences of the nodes that have fused with
         % the new node ID
@@ -1444,7 +1494,6 @@ for iE = 1:neP
         ET(1,:) = [];
     end
 end
-assignin('base','P_PIL',P_PIL)
 % complete links to the root node
 parent(end+1) = Nk+1;
 parent = double(fliplr(max(parent(:)) - parent));
@@ -1563,7 +1612,7 @@ end
 drawnow
 if ExportFigs
     warning('off','MATLAB:prnRenderer:opengl');
-    export_fig(name,'-png','-r300',hfig)
+    export_fig(name,'-png','-r600',hfig)
     %     saveas(hfig,name)
 end
 delete(hfig);
@@ -1698,7 +1747,7 @@ end
 drawnow
 if ExportFigs
     warning('off','MATLAB:prnRenderer:opengl');
-    export_fig(name,'-png','-r300','-painters',hfig)
+    export_fig(name,'-png','-r600','-painters',hfig)
     %     saveas(hfig,name)
 end
 delete(hfig);
@@ -1773,7 +1822,7 @@ end
 drawnow
 if ExportFigs
     warning('off','MATLAB:prnRenderer:opengl');
-    export_fig(name,'-png','-r300','-painters',hfig)
+    export_fig(name,'-png','-r600','-painters',hfig)
     %     saveas(hfig,name)
 end
 end
