@@ -2,7 +2,7 @@
 clc
 clear
 opengl software % to mimic the remote environment
-remote = 0;
+remote = 1;
 ShowFigs = 1;
 ExportFigs = 1;
 FullMetrics = 1;

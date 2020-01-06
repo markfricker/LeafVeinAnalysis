@@ -5,6 +5,13 @@ dir_out_PR_images = ['..' filesep 'summary' filesep 'PR' filesep 'images' filese
 dir_out_PR_graphs = ['..' filesep 'summary' filesep 'PR' filesep 'graphs' filesep];
 %% set up parameters
 micron_per_pixel = micron_per_pixel.*DownSample;
+radius = 45;
+%% set up threshold parameters
+Tmin = 0;
+Tmax = 1;
+nT = 20;
+Tint = (Tmax-Tmin)/(nT);
+T = Tmin:Tint:Tmax-Tint;
 %% initialise main program
 step = 0;
 warning off
@@ -28,14 +35,9 @@ PR_methods.roi.GT = bw_GT(BB(2):BB(2)+BB(4)-1,BB(1):BB(1)+BB(3)-1);
 % roi_GT = bwareafilt(roi_GT,1);
 % invert and normalise the original image
 PR_methods.roi.invert = imcomplement(mat2gray(PR_methods.roi.im));
-%% set up threshold parameters
-Tmin = 0;
-Tmax = 1;
-nT = 20;
-Tint = (Tmax-Tmin)/(nT);
-T = Tmin:Tint:Tmax-Tint;
+
 %% set up an array of methods
-PR_methods.name = {'CNN';'Vesselness';'FeatureType';'BowlerHat';'midgrey';'Niblack';'Bernsen';'Sauvola';'MFATl';'MFATp'};
+PR_methods.name = {'CNN';'Vesselness';'MFATl';'MFATp';'BowlerHat';'FeatureType';'midgrey';'Niblack';'Bernsen';'Sauvola'};
 % choose which methods to test
 PR_methods.select = logical([1 1 1 1 1 1 1 1 1 1]);
 % set up the evaluation table for the full width images
@@ -74,6 +76,7 @@ results.FBeta2_ratio = results.F1;
 %% loop through each method
 n = 0;
 for iM = 1:sum(PR_methods.select)
+    % tic
     n = n+1;
     idx = find(PR_methods.select);
     method = PR_methods.name{idx(iM)};
@@ -94,10 +97,10 @@ for iM = 1:sum(PR_methods.select)
     switch method
         case {'CNN';'Vesselness';'FeatureType';'BowlerHat';'MFATl';'MFATp'}
             % use a hysteresis threshold for the enhanced images
-            PR_methods.fullwidth.(method) = fnc_im_to_bw(PR_methods.enhanced.(method),PR_methods.roi.bw,PR_methods.roi.vein,PR_methods.roi.mask,T,'hysteresis');
+            PR_methods.fullwidth.(method) = fnc_im_to_bw(PR_methods.enhanced.(method),PR_methods.roi.bw,PR_methods.roi.vein,PR_methods.roi.mask,T,'hysteresis',radius);
         case {'Niblack';'midgrey';'Bernsen';'Sauvola'}
             % apply the local thresholding to the other images
-            PR_methods.fullwidth.(method) = fnc_im_to_bw(PR_methods.enhanced.(method),PR_methods.roi.bw,PR_methods.roi.vein,PR_methods.roi.mask,T,method);
+            PR_methods.fullwidth.(method) = fnc_im_to_bw(PR_methods.enhanced.(method),PR_methods.roi.bw,PR_methods.roi.vein,PR_methods.roi.mask,T,method,radius);
         otherwise
             PR_methods.fullwidth.(method) = PR_methods.enhanced.(method);
     end
@@ -111,8 +114,8 @@ for iM = 1:sum(PR_methods.select)
     % keep the best full width images
     F1_idx_fw = PR_methods.evaluation_fw{method,'F1_idx'};
     FBeta2_idx_fw = PR_methods.evaluation_fw{method,'FBeta2_idx'};
-    PR_methods.F1_fw{idx(iM)} = PR_methods.images_fw.(method)(:,:,F1_idx_fw);
-    PR_methods.FBeta2_fw{idx(iM)} = PR_methods.images_fw.(method)(:,:,FBeta2_idx_fw);
+    PR_methods.F1_fw.(method) = PR_methods.fullwidth.(method)(:,:,F1_idx_fw);
+    PR_methods.FBeta2_fw.(method) = PR_methods.fullwidth.(method)(:,:,FBeta2_idx_fw);
     % convert to a skeleton
     if n == 1
         % get the ground truth skeleton
@@ -131,8 +134,8 @@ for iM = 1:sum(PR_methods.select)
     % keep the best skeleton
     F1_idx_sk = PR_methods.evaluation_sk{method,'F1_idx'};
     FBeta2_idx_sk = PR_methods.evaluation_sk{method,'FBeta2_idx'};
-    PR_methods.F1_sk{idx(iM)} = PR_methods.sk.(method)(:,:,F1_idx_sk);
-    PR_methods.FBeta2_sk{idx(iM)} = PR_methods.sk.(method)(:,:,FBeta2_idx_sk);
+    PR_methods.F1_sk.(method) = PR_methods.sk.(method)(:,:,F1_idx_sk);
+    PR_methods.FBeta2_sk.(method) = PR_methods.sk.(method)(:,:,FBeta2_idx_sk);
     % get some basic graph results for the ground truth
     if n ==1
         GT_full = fnc_skeleton_analysis(PR_methods.roi.sk.('GT'),PR_methods.roi.bw);
@@ -148,6 +151,8 @@ for iM = 1:sum(PR_methods.select)
     results.(method) = results_full;
     results.F1(idx(iM)+1,:) = results_full(F1_idx_sk,:);
     results.FBeta2(idx(iM)+1,:) = results_full(FBeta2_idx_sk,:);
+    
+    %disp(['Elapsed time for method: ' method ' = ' num2str(toc)])
 end
 %% calcuate the ratio values against the ground truth
 results.F1_ratio([true PR_methods.select],:) = array2table(log(results.F1{[true PR_methods.select],:}./results.F1{1,:}));
@@ -168,7 +173,7 @@ export_fig([dir_out_PR_graphs FolderName '_PR_sk_plots'],'-native','-png',hfig)
 delete(hfig)
 %% display the figure
 hfig = fnc_display_images(PR_methods);
-export_fig([dir_out_PR_images FolderName '_PR_images'],'-native','-png',hfig)
+export_fig([dir_out_PR_images FolderName '_PR_images'],'-150','-png',hfig)
 delete(hfig)
 %% add in the file and method indexes
 results.F1.Filename = repelem({FolderName},height(results.F1),1);
@@ -204,7 +209,8 @@ for iI = 1:nI
     % get the name of the original image
     FileName = Files(idx(iI)).name;
     % read in the original png image using the matlab filters
-    cnn(:,:,iI) = imread(FileName);
+    temp = imread(FileName);
+    cnn(:,:,iI) = temp(:,:,1);
 end
 % average and downsample the cnn images
 if DownSample > 1
@@ -264,6 +270,8 @@ end
 % apply the masks
 bw_mask = bw_mask & bw_cnn_mask;
 im_cnn(~bw_mask) = 0;
+% mask for fullsize images
+im(~bw_mask) = 0;
 end
 
 function im_out = fnc_enhance_im(im_in,DownSample,method)
@@ -307,7 +315,7 @@ switch method
             end
         end
     case 'FeatureType'
-        for iL = 1:nLevels-1
+        for iL = 1:2;%:3
             [M,m,or,featType,pc,EO,T,pcSum] = phasecong3(I{iL}, ...
                 5, 6, minW, 2.1, 0.55, 2, 0.5, 10, -1);
             temp = single((featType+pi/2)/pi);
@@ -315,7 +323,7 @@ switch method
             im_out = max(im_out,imresize(temp,size(im_in)));
         end
     case 'BowlerHat'
-        for iL = 1:nLevels-1
+        for iL = 1:2
             for iW = minW:2*minW+1
                 [temp,~] = Granulo2D(I{iL},iW*3,6);
                 temp = imclose(temp,D);
@@ -327,9 +335,9 @@ switch method
             % Parameters setting
             sigmas = [1:1:3];
             spacing = .7; whiteondark = true;
-            % tau = 0.05; tau2 = 0.25; D = 0.45;
-            tau = 0.03; tau2 = 0.5; D = 0.01;
-            % Proposed Method (Eign values based version)
+            %tau = 0.03; tau2 = 0.5; D = 0.01; default
+            tau = 0.2; tau2 = 0.5; D = 0.01;
+            % Proposed Method (Eigenvalue based version)
             temp = FractionalIstropicTensor(I{iL},sigmas,tau,tau2,D,spacing,whiteondark);
             im_out = max(im_out,imresize(temp,size(im_in)));
         end
@@ -338,8 +346,9 @@ switch method
             % Parameters setting
             sigmas = [1:1:3];
             spacing = .7; whiteondark = true;
-            tau = 0.05; tau2 = 0.25; D = 0.45;
-            % Proposed Method (Eign values based version)
+            %tau = 0.05; tau2 = 0.25; D = 0.45; % default
+            tau = 0.05; tau2 = 0.5; D = 0.01;
+            % Proposed Method (probability based version)
             temp = ProbabiliticFractionalIstropicTensor(I{iL},sigmas,tau,tau2,D,spacing,whiteondark);
             im_out = max(im_out,imresize(temp,size(im_in)));
         end
@@ -348,18 +357,17 @@ end
 im_out = mat2gray(im_out);
 end
 
-function bw_out = fnc_im_to_bw(im_in,roi,roi_vein,roi_mask,T,method)
-radius = 45;
+function bw_out = fnc_im_to_bw(im_in,roi,roi_vein,roi_mask,T,method,radius)
 se = strel('disk',radius);
 nT = length(T);
 bw_out = false([size(im_in) nT]);
 switch method
-    case {'Niblack';'midgrey';'Bernsen';'Sauvola'}
+    case {'Niblack';'midgrey'}
         T = T-0.5; % allow the offset to run from -0.5 to 0.5
 end
 switch method
     case 'Niblack'
-        m = imfilter(im_in,fspecial('disk',radius)); % local mean
+        m = imfilter(im_in,fspecial('disk',radius),'replicate'); % local mean
         s = stdfilt(im_in,getnhood(se)); % local std
         for iT = 1:nT
             level = m + T(iT) * s;
@@ -370,10 +378,11 @@ switch method
         lmax = imdilate(im_in,se);
         mg = (lmin + lmax)/2;
         for iT = 1:nT
-            level =  mg - T(iT);
+            level =  mg + T(iT); % T runs from -0.5 to +0.5
             bw_out(:,:,iT) = im_in > level;
         end
     case 'Bernsen'
+        se = strel('disk',round(radius/3));
         lmin = imerode(im_in,se);
         lmax = imdilate(im_in,se);
         lc = lmax - lmin; % local contrast
@@ -388,7 +397,7 @@ switch method
         end
     case 'Sauvola'
         % t = mean * ( 1 + k * ( stdev / r - 1 ) ) )
-        m = imfilter(im_in,fspecial('disk',radius)); % local mean
+        m = imfilter(im_in,fspecial('disk',radius),'replicate'); % local mean
         s = stdfilt(im_in,getnhood(se)); % local std
         R = max(s(:)); % 0.5
         for iT = 1:nT
@@ -722,7 +731,7 @@ for iM = 1:numel(methods)
 end
 end
 
-function hfig = fnc_display_images(PR_methods)
+function hfig = fnc_display_images_small(PR_methods)
         hfig = figure('Renderer','painters');
         offset = 0;
         % set up the axes to fill the figure
@@ -807,6 +816,113 @@ function hfig = fnc_display_images(PR_methods)
             end
         end
     end
-
-
+    
+    function hfig = fnc_display_images(PR_methods)
+    hfig = figure('Renderer','painters');
+    offset = 0;
+    %         % set up the axes to fill the figure
+    %         for ia = 1:33
+    %             ax(ia) = subplot(3,11,ia);
+    %             axes(ax(ia))
+    %             pos = ax(ia).OuterPosition;
+    %             ax(ia).Position = pos;
+    %             ax(ia).XTick = [];
+    %             ax(ia).YTick = [];
+    %         end
+    
+    hfig.Units = 'normalized';
+    hfig.Position = [0 0 1 0.8];
+    hfig.Color = 'w';
+    %
+    tiledlayout(3,11,'TileSpacing','none','Padding','none')
+    %
+    idx = PR_methods.select;
+    methods = {PR_methods.name{idx}};
+    % choose the orientation to be landscape
+    %         axes(ax(1))
+    if size(PR_methods.roi.im,1) < size(PR_methods.roi.im,2)
+        rotate_angle = 90;
+    else
+        rotate_angle = 0;
+    end
+    % show the original image in inverse greyscale
+    pic = PR_methods.roi.im;
+    pic(~PR_methods.roi.bw) = 1;
+    im_dis = imrotate(pic,rotate_angle);
+    nexttile
+    imshow(imcomplement(im_dis),[])
+    title('original')
+    axis off
+    % display all methods
+    for iP = 1:10
+        n = iP+offset;
+        %axes(ax(iP*3+1))
+        method = methods{iP};
+        switch method
+            case {'CNN';'Vesselness';'MFATl';'MFATp';'BowlerHat';'FeatureType'}
+                pic = PR_methods.enhanced.(method);
+                pic(~PR_methods.roi.bw) = 0;
+                im_dis = imrotate(pic,rotate_angle);
+            otherwise
+                im_dis = imrotate(PR_methods.FBeta2_fw.(method),rotate_angle);
+        end
+        
+        nexttile
+        imshow(im_dis,[])
+        title(methods{n})
+        axis off
+    end
+    % display the full-width ground-truth
+    %axes(ax(12
+    nexttile
+    im_dis = imrotate(PR_methods.roi.GT,rotate_angle);
+    imshow(im_dis,[])
+    title('full-width ground truth')
+    % display the full width PR images
+    axis off
+    for iP = 1:10
+        %axes(ax(iP*3+5))
+        method = methods{iP};
+        n = iP+offset;
+        nexttile
+        imshow(imrotate(PR_methods.images_fw.(method)(:,:,:,PR_methods.evaluation_fw{method,'F1_idx'}),rotate_angle),[])
+        title({['F1 = ' num2str(PR_methods.evaluation_fw{method,'F1'},2)], ['FBeta2 = ' num2str(PR_methods.evaluation_fw{method,'FBeta2'},2)]})
+        axis off
+    end
+    % display the skeleton PR images
+    % choose the thickness to dilate (original) or erode (complement) the skeleton to be visible
+    width = 3;
+    %         axes(ax(23))
+    nexttile
+    imshow(imdilate(imrotate(PR_methods.roi.sk.('GT'),rotate_angle), ones(width)),[])
+    title('skeleton ground truth')
+    axis off
+    for iP = 1:10
+        %             axes(ax(iP*3+5))
+        n = iP+offset;
+        method = methods{iP};
+        nexttile
+        imshow(imerode(imrotate(PR_methods.images_sk.(method)(:,:,:,PR_methods.evaluation_sk{method,'F1_idx'}),rotate_angle),ones(width)),[])
+        title({['F1 = ' num2str(PR_methods.evaluation_sk{method,'F1'},2)], ['FBeta2 = ' num2str(PR_methods.evaluation_sk{method,'FBeta2'},2)]})
+        axis off
+    end
+    %         % tidy up the axes
+    %         for ia = 1:33
+    % %             axes(ax(ia))
+    %             ax(ia).XTick = [];
+    %             ax(ia).YTick = [];
+    %             axis off
+    %             box on
+    %             ax(ia).Title.FontWeight = 'normal';
+    %             ax(ia).Title.FontUnits = 'points';
+    %             ax(ia).Title.FontSize = 12;
+    %             if ia == 1
+    %                 ax(ia).YLabel.String = 'enhanced image';
+    %             elseif ia == 7
+    %                 ax(ia).YLabel.String = 'full-width binary';
+    %             elseif ia == 13
+    %                 ax(ia).YLabel.String = 'skeleton';
+    %             end
+    %         end
+    end
 

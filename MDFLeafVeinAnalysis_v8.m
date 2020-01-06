@@ -1,4 +1,4 @@
-function results = MDFLeafVeinAnalysis_v7(FolderName,micron_per_pixel,DownSample,threshold,ShowFigs,ExportFigs,FullLeaf,FullMetrics)
+function results = MDFLeafVeinAnalysis_v8(FolderName,micron_per_pixel,DownSample,threshold,ShowFigs,ExportFigs,FullLeaf,FullMetrics)
 %% set up directories
 dir_out_images = ['..' filesep 'summary' filesep 'images' filesep];
 dir_out_width = ['..' filesep 'summary' filesep 'width' filesep];
@@ -62,8 +62,8 @@ if ExportFigs == 1
     disp(['Step ' num2str(step) ': Saving width images'])
     [nY,nX,~] = size(coded_CW);
     % save the color-coded width images
-    fout = [dir_out_images FolderName '_centerwidth.png'];
-    imwrite(coded_CW,fout,'png','Xresolution',nX,'Yresolution',nY)
+%     fout = [dir_out_images FolderName '_centerwidth.png'];
+%     imwrite(coded_CW,fout,'png','Xresolution',nX,'Yresolution',nY)
     fout = [dir_out_images FolderName '_fullwidth.png'];
     imwrite(coded_FW,fout,'png','Xresolution',nX,'Yresolution',nY)
     % save the greyscale width array as a matlab file. Note outside the
@@ -140,10 +140,12 @@ if ExportFigs == 1
     mx = double(max(HLD_image(:)));
     cmap = jet(mx+1);
     cmap(1,:) = 0;
-    HLD_image = colfilt(HLD_image,[3 3],'sliding',@max);
+    %HLD_image = colfilt(HLD_image,[3 3],'sliding',@max);
     HLD_image(bw_polygons) = 0;
+    hfig = figure;
     imshow(ind2rgb(HLD_image,cmap))
     imwrite(ind2rgb(HLD_image,cmap),fout,'png','Xresolution',nX,'Yresolution',nY)
+    delete(hfig)
 end
 %% save results to Excel
 step = step+1;
@@ -1538,7 +1540,8 @@ G_HLD = graph(EdgeTable, NodeTable);
 end
 
 function hfig = display_figure(images,graphs,titles,G,E_width,links,name,ExportFigs)
-hfig = figure('Renderer','painters');
+%hfig = figure('Renderer','painters');
+hfig = figure; % remote only uses software opengl
 hfig.Units = 'normalized';
 hfig.Position = [0 0 1 1];
 hfig.Color = 'w';
@@ -1619,7 +1622,8 @@ delete(hfig);
 end
 
 function hfig = display_HLD(G_polygons,im_cnn,G_HLD,FullLeaf,name,ExportFigs)
-hfig = figure('Renderer','painters');
+%hfig = figure('Renderer','painters');
+hfig = figure; % remote only uses software opengl
 hfig.Units = 'normalized';
 hfig.Position = [0 0 0.6 1];
 hfig.Color = 'w';
@@ -1747,14 +1751,16 @@ end
 drawnow
 if ExportFigs
     warning('off','MATLAB:prnRenderer:opengl');
-    export_fig(name,'-png','-pdf','-r300','-painters',hfig)
+    %export_fig(name,'-png','-pdf','-r300','-painters',hfig)
+    export_fig(name,'-png','-pdf','-r300',hfig)
     %     saveas(hfig,name)
 end
 delete(hfig);
 end
 
 function hfig = display_HLD_figure(G_polygons,im_cnn,G_HLD,FullLeaf,name,ExportFigs)
-hfig = figure('Renderer','painters');
+%hfig = figure('Renderer','painters');
+hfig = figure; % remote only uses software opengl
 hfig.Units = 'normalized';
 hfig.Position = [0 0 1 0.5];
 hfig.Color = 'w';
@@ -1822,7 +1828,8 @@ end
 drawnow
 if ExportFigs
     warning('off','MATLAB:prnRenderer:opengl');
-    export_fig(name,'-png','-r600','-painters',hfig)
+    %export_fig(name,'-png','-r600','-painters',hfig)
+    export_fig(name,'-png','-r600',hfig)
     %     saveas(hfig,name)
 end
 end

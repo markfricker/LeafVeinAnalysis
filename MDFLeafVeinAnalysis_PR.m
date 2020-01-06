@@ -23,7 +23,6 @@ step = step+1;
 disp(['Step ' num2str(step) ': Processing ' FolderName])
 [im,im_cnn,bw_mask,bw_vein,bw_roi,bw_GT] = fnc_load_CNN_images(FolderName,DownSample);
 %% test the performance against the internal ground truth
-
 step = step+1;
 disp(['Step ' num2str(step) ': Precision-Recall analysis'])
 dirout = dir_out_PR_images;
@@ -47,7 +46,7 @@ nT = 20;
 Tint = (Tmax-Tmin)/(nT);
 T = Tmin:Tint:Tmax-Tint;
 % set up an array of methods
-PR_methods.name = {'CNN';'Vesselness';'FeatureType';'BowlerHat';'midgrey';'Niblack';'Bernsen';'Sauvola';'MFATl';'MFATp'};
+PR_methods.name = {'CNN';'midgrey';'Niblack';'Bernsen';'Sauvola';'Vesselness';'MFATl';'MFATp';'BowlerHat';'FeatureType'};
 % choose which methods to test
 PR_methods.select = [1 1 1 1 1 1 1 1 1 1];
 % set up the evaluation table for the full width images
@@ -262,7 +261,7 @@ methods = {PR_methods.name{idx}};
 %methods = {'CNN';'Vesselness';'FeatureType';'BowlerHat';'midgrey'};
 % choose the orientation to be portrait
 axes(ax(1))
-if size(roi_im,1) < size(roi_im,2)
+if size(roi_im,1) > size(roi_im,2)
     rotate_angle = 90;
 else
     rotate_angle = 0;
@@ -661,10 +660,9 @@ switch method
             % iL = 1;
             % Parameters setting
             sigmas = [1:1:5];
-            
             spacing = .7; whiteondark = true;
             tau = 0.05; tau2 = 0.25; D = 0.45;
-            % Proposed Method (Eign values based version)
+            % Proposed Method (probability based version)
             temp = ProbabiliticFractionalIstropicTensor(I{iL},sigmas,tau,tau2,D,spacing,whiteondark);
             im_out = max(im_out,imresize(temp,size(im_in)));
         end
