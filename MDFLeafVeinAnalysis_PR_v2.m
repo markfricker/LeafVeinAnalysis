@@ -76,7 +76,7 @@ results.FBeta2_ratio = results.F1;
 %% loop through each method
 n = 0;
 for iM = 1:sum(PR_methods.select)
-    % tic
+    tic
     n = n+1;
     idx = find(PR_methods.select);
     method = PR_methods.name{idx(iM)};
@@ -152,7 +152,7 @@ for iM = 1:sum(PR_methods.select)
     results.F1(idx(iM)+1,:) = results_full(F1_idx_sk,:);
     results.FBeta2(idx(iM)+1,:) = results_full(FBeta2_idx_sk,:);
     
-    %disp(['Elapsed time for method: ' method ' = ' num2str(toc)])
+    disp(['Elapsed time for method: ' method ' = ' num2str(toc)])
 end
 %% calcuate the ratio values against the ground truth
 results.F1_ratio([true PR_methods.select],:) = array2table(log(results.F1{[true PR_methods.select],:}./results.F1{1,:}));
@@ -173,7 +173,7 @@ export_fig([dir_out_PR_graphs FolderName '_PR_sk_plots'],'-native','-png',hfig)
 delete(hfig)
 %% display the figure
 hfig = fnc_display_images(PR_methods);
-export_fig([dir_out_PR_images FolderName '_PR_images'],'-150','-png',hfig)
+export_fig([dir_out_PR_images FolderName '_PR_images'],'-r150','-png',hfig)
 delete(hfig)
 %% add in the file and method indexes
 results.F1.Filename = repelem({FolderName},height(results.F1),1);
@@ -323,7 +323,7 @@ switch method
             im_out = max(im_out,imresize(temp,size(im_in)));
         end
     case 'BowlerHat'
-        for iL = 1:2
+        for iL = 1:nLevels-1
             for iW = minW:2*minW+1
                 [temp,~] = Granulo2D(I{iL},iW*3,6);
                 temp = imclose(temp,D);
@@ -331,7 +331,7 @@ switch method
             end
         end
     case 'MFATl'
-        for iL = 1:3
+        for iL = 1:nLevels
             % Parameters setting
             sigmas = [1:1:3];
             spacing = .7; whiteondark = true;
@@ -342,7 +342,7 @@ switch method
             im_out = max(im_out,imresize(temp,size(im_in)));
         end
     case 'MFATp'
-        for iL = 1:3
+        for iL = 1:nLevels
             % Parameters setting
             sigmas = [1:1:3];
             spacing = .7; whiteondark = true;
@@ -452,6 +452,9 @@ for iT = 1:nT
         temp(~roi) = 0;
         bw_out(:,:,iT)=temp;
     end
+    % do some area filtering to remove noise
+    se = strel('disk',5);
+    bw_out(:,:,iT) = imopen(bw_out(:,:,iT),se);
     % keep the largest connected component
     %bw_out(:,:,iT) = bwareafilt(bw_out(:,:,iT),1);
 end
@@ -732,197 +735,207 @@ end
 end
 
 function hfig = fnc_display_images_small(PR_methods)
-        hfig = figure('Renderer','painters');
-        offset = 0;
-        % set up the axes to fill the figure
-        for ia = 1:18
-            ax(ia) = subplot(3,6,ia);
-            axes(ax(ia))
-            pos = ax(ia).OuterPosition;
-            ax(ia).Position = pos;
-            ax(ia).XTick = [];
-            ax(ia).YTick = [];
-        end
-        hfig.Units = 'normalized';
-        hfig.Position = [0 0 1 1];
-        hfig.Color = 'w';
-        %
-        idx = PR_methods.select;
-        methods = {PR_methods.name{idx}};
-        % choose the orientation to be portrait
-        axes(ax(1))
-        if size(PR_methods.roi.im,1) < size(PR_methods.roi.im,2)
-            rotate_angle = 90;
-        else
-            rotate_angle = 0;
-        end
-        % show the original image in inverse greyscale
-        im_dis = imrotate(PR_methods.roi.im,rotate_angle);
-        imshow(max(im_dis(:))-im_dis,[])
-        title('original')
-        axis off
-        % display five methods
-        for iP = 1:5
-            n = iP+offset;
-            axes(ax(iP+1))
-            method = methods{iP};
-            im_dis = imrotate(PR_methods.enhanced.(method),rotate_angle);
-            imshow(im_dis,[])
-            title(methods{n})
-            axis off
-        end
-        % display the full-width ground-truth
-        axes(ax(7))
-        im_dis = imrotate(PR_methods.roi.GT,rotate_angle);
-        imshow(~im_dis,[])
-        % display the full width PR images
-        axis off
-        for iP = 1:5
-            axes(ax(iP+7))
-            method = methods{iP};
-            n = iP+offset;
-            imshow(imrotate(PR_methods.images_fw.(method)(:,:,:,PR_methods.evaluation_fw{method,'F1_idx'}),rotate_angle),[])
-            axis off
-        end
-        % display the skeleton PR images
-        % choose the thickness to dilate (original) or erode (complement) the skeleton to be visible
-        width = 3;
-        axes(ax(13))
-        imshow(imerode(imrotate(~PR_methods.roi.sk.('GT'),rotate_angle), ones(width)),[])
-        axis off
-        for iP = 1:5
-            axes(ax(iP+13))
-            n = iP+offset;
-            method = methods{iP};
-            imshow(imerode(imrotate(PR_methods.images_sk.(method)(:,:,:,PR_methods.evaluation_sk{method,'F1_idx'}),rotate_angle),ones(width)),[])
-            axis off
-        end
-        % tidy up the axes
-        for ia = 1:18
-            axes(ax(ia))
-            ax(ia).XTick = [];
-            ax(ia).YTick = [];
-            axis off
-            box on
-            ax(ia).Title.FontWeight = 'normal';
-            ax(ia).Title.FontUnits = 'points';
-            ax(ia).Title.FontSize = 12;
-            if ia == 1
-                ax(ia).YLabel.String = 'enhanced image';
-            elseif ia == 7
-                ax(ia).YLabel.String = 'full-width binary';
-            elseif ia == 13
-                ax(ia).YLabel.String = 'skeleton';
-            end
-        end
-    end
-    
-    function hfig = fnc_display_images(PR_methods)
-    hfig = figure('Renderer','painters');
-    offset = 0;
-    %         % set up the axes to fill the figure
-    %         for ia = 1:33
-    %             ax(ia) = subplot(3,11,ia);
-    %             axes(ax(ia))
-    %             pos = ax(ia).OuterPosition;
-    %             ax(ia).Position = pos;
-    %             ax(ia).XTick = [];
-    %             ax(ia).YTick = [];
-    %         end
-    
-    hfig.Units = 'normalized';
-    hfig.Position = [0 0 1 0.8];
-    hfig.Color = 'w';
-    %
-    tiledlayout(3,11,'TileSpacing','none','Padding','none')
-    %
-    idx = PR_methods.select;
-    methods = {PR_methods.name{idx}};
-    % choose the orientation to be landscape
-    %         axes(ax(1))
-    if size(PR_methods.roi.im,1) < size(PR_methods.roi.im,2)
-        rotate_angle = 90;
-    else
-        rotate_angle = 0;
-    end
-    % show the original image in inverse greyscale
-    pic = PR_methods.roi.im;
-    pic(~PR_methods.roi.bw) = 1;
-    im_dis = imrotate(pic,rotate_angle);
-    nexttile
-    imshow(imcomplement(im_dis),[])
-    title('original')
-    axis off
-    % display all methods
-    for iP = 1:10
-        n = iP+offset;
-        %axes(ax(iP*3+1))
-        method = methods{iP};
-        switch method
-            case {'CNN';'Vesselness';'MFATl';'MFATp';'BowlerHat';'FeatureType'}
-                pic = PR_methods.enhanced.(method);
-                pic(~PR_methods.roi.bw) = 0;
-                im_dis = imrotate(pic,rotate_angle);
-            otherwise
-                im_dis = imrotate(PR_methods.FBeta2_fw.(method),rotate_angle);
-        end
-        
-        nexttile
-        imshow(im_dis,[])
-        title(methods{n})
-        axis off
-    end
-    % display the full-width ground-truth
-    %axes(ax(12
-    nexttile
-    im_dis = imrotate(PR_methods.roi.GT,rotate_angle);
+hfig = figure('Renderer','painters');
+offset = 0;
+% set up the axes to fill the figure
+for ia = 1:18
+    ax(ia) = subplot(3,6,ia);
+    axes(ax(ia))
+    pos = ax(ia).OuterPosition;
+    ax(ia).Position = pos;
+    ax(ia).XTick = [];
+    ax(ia).YTick = [];
+end
+hfig.Units = 'normalized';
+hfig.Position = [0 0 1 1];
+hfig.Color = 'w';
+%
+idx = PR_methods.select;
+methods = {PR_methods.name{idx}};
+% choose the orientation to be portrait
+axes(ax(1))
+if size(PR_methods.roi.im,1) < size(PR_methods.roi.im,2)
+    rotate_angle = 90;
+else
+    rotate_angle = 0;
+end
+% show the original image in inverse greyscale
+im_dis = imrotate(PR_methods.roi.im,rotate_angle);
+imshow(max(im_dis(:))-im_dis,[])
+title('original')
+axis off
+% display five methods
+for iP = 1:5
+    n = iP+offset;
+    axes(ax(iP+1))
+    method = methods{iP};
+    im_dis = imrotate(PR_methods.enhanced.(method),rotate_angle);
     imshow(im_dis,[])
-    title('full-width ground truth')
-    % display the full width PR images
+    title(methods{n})
     axis off
-    for iP = 1:10
-        %axes(ax(iP*3+5))
-        method = methods{iP};
-        n = iP+offset;
-        nexttile
-        imshow(imrotate(PR_methods.images_fw.(method)(:,:,:,PR_methods.evaluation_fw{method,'F1_idx'}),rotate_angle),[])
-        title({['F1 = ' num2str(PR_methods.evaluation_fw{method,'F1'},2)], ['FBeta2 = ' num2str(PR_methods.evaluation_fw{method,'FBeta2'},2)]})
-        axis off
-    end
-    % display the skeleton PR images
-    % choose the thickness to dilate (original) or erode (complement) the skeleton to be visible
-    width = 3;
-    %         axes(ax(23))
-    nexttile
-    imshow(imdilate(imrotate(PR_methods.roi.sk.('GT'),rotate_angle), ones(width)),[])
-    title('skeleton ground truth')
+end
+% display the full-width ground-truth
+axes(ax(7))
+im_dis = imrotate(PR_methods.roi.GT,rotate_angle);
+imshow(~im_dis,[])
+% display the full width PR images
+axis off
+for iP = 1:5
+    axes(ax(iP+7))
+    method = methods{iP};
+    n = iP+offset;
+    imshow(imrotate(PR_methods.images_fw.(method)(:,:,:,PR_methods.evaluation_fw{method,'F1_idx'}),rotate_angle),[])
     axis off
-    for iP = 1:10
-        %             axes(ax(iP*3+5))
-        n = iP+offset;
-        method = methods{iP};
-        nexttile
-        imshow(imerode(imrotate(PR_methods.images_sk.(method)(:,:,:,PR_methods.evaluation_sk{method,'F1_idx'}),rotate_angle),ones(width)),[])
-        title({['F1 = ' num2str(PR_methods.evaluation_sk{method,'F1'},2)], ['FBeta2 = ' num2str(PR_methods.evaluation_sk{method,'FBeta2'},2)]})
-        axis off
+end
+% display the skeleton PR images
+% choose the thickness to dilate (original) or erode (complement) the skeleton to be visible
+width = 3;
+axes(ax(13))
+imshow(imerode(imrotate(~PR_methods.roi.sk.('GT'),rotate_angle), ones(width)),[])
+axis off
+for iP = 1:5
+    axes(ax(iP+13))
+    n = iP+offset;
+    method = methods{iP};
+    imshow(imerode(imrotate(PR_methods.images_sk.(method)(:,:,:,PR_methods.evaluation_sk{method,'F1_idx'}),rotate_angle),ones(width)),[])
+    axis off
+end
+% tidy up the axes
+for ia = 1:18
+    axes(ax(ia))
+    ax(ia).XTick = [];
+    ax(ia).YTick = [];
+    axis off
+    box on
+    ax(ia).Title.FontWeight = 'normal';
+    ax(ia).Title.FontUnits = 'points';
+    ax(ia).Title.FontSize = 12;
+    if ia == 1
+        ax(ia).YLabel.String = 'enhanced image';
+    elseif ia == 7
+        ax(ia).YLabel.String = 'full-width binary';
+    elseif ia == 13
+        ax(ia).YLabel.String = 'skeleton';
     end
-    %         % tidy up the axes
-    %         for ia = 1:33
-    % %             axes(ax(ia))
-    %             ax(ia).XTick = [];
-    %             ax(ia).YTick = [];
-    %             axis off
-    %             box on
-    %             ax(ia).Title.FontWeight = 'normal';
-    %             ax(ia).Title.FontUnits = 'points';
-    %             ax(ia).Title.FontSize = 12;
-    %             if ia == 1
-    %                 ax(ia).YLabel.String = 'enhanced image';
-    %             elseif ia == 7
-    %                 ax(ia).YLabel.String = 'full-width binary';
-    %             elseif ia == 13
-    %                 ax(ia).YLabel.String = 'skeleton';
-    %             end
-    %         end
+end
+end
+
+function hfig = fnc_display_images(PR_methods)
+hfig = figure('Renderer','painters');
+hfig.Units = 'normalized';
+hfig.Position = [0 0.1 1 0.8];
+%hfig.Color = 'w';
+offset = 0;
+% set up the axes to fill the figure
+ia = 0;
+cborder = 0.002;
+rborder = 0.005;
+width = (1-cborder*12)/12;
+height = (1-rborder*4)/3;
+for r = 1:3
+    for c = 1:11
+        ia = ia+1;
+        left = cborder + round(((c-1)*width)+(cborder*c),4);
+        bottom = rborder + round((3-r)*height +(3-r)*rborder,4);
+        ax(ia) = subplot(3,11,ia);
+        ax(ia).XTick = [];
+        ax(ia).YTick = [];
+        ax(ia).Position = [left bottom width height];
     end
+end
+
+
+%
+% tiledlayout(3,11,'TileSpacing','none','Padding','none'); % only runs in
+% 2019b
+%
+idx = PR_methods.select;
+methods = {PR_methods.name{idx}};
+% choose the orientation to be landscape
+axes(ax(1))
+if size(PR_methods.roi.im,1) < size(PR_methods.roi.im,2)
+    rotate_angle = 90;
+else
+    rotate_angle = 0;
+end
+% show the original image in inverse greyscale
+pic = PR_methods.roi.im;
+pic(~PR_methods.roi.bw) = 1;
+im_dis = imrotate(pic,rotate_angle);
+%nexttile
+imshow(imcomplement(im_dis),[])
+title('original')
+axis off
+% display all methods
+for iP = 1:10
+    n = iP+offset;
+    axes(ax(iP+1))
+    method = methods{iP};
+    switch method
+        case {'CNN';'Vesselness';'MFATl';'MFATp';'BowlerHat';'FeatureType'}
+            pic = PR_methods.enhanced.(method);
+            pic(~PR_methods.roi.bw) = 0;
+            im_dis = imrotate(pic,rotate_angle);
+        otherwise
+            im_dis = imrotate(PR_methods.FBeta2_fw.(method),rotate_angle);
+    end
+    
+    %nexttile
+    imshow(im_dis,[])
+    title(methods{n})
+    axis off
+end
+% display the full-width ground-truth
+axes(ax(12))
+%nexttile
+im_dis = imrotate(PR_methods.roi.GT,rotate_angle);
+imshow(im_dis,[])
+title('full-width ground truth')
+% display the full width PR images
+axis off
+for iP = 1:10
+    axes(ax(iP+12))
+    method = methods{iP};
+    n = iP+offset;
+    %nexttile
+    imshow(imrotate(PR_methods.images_fw.(method)(:,:,:,PR_methods.evaluation_fw{method,'F1_idx'}),rotate_angle),[])
+    title({['F1 = ' num2str(PR_methods.evaluation_fw{method,'F1'},2)], ['FBeta2 = ' num2str(PR_methods.evaluation_fw{method,'FBeta2'},2)]})
+    axis off
+end
+% display the skeleton PR images
+% choose the thickness to dilate (original) or erode (complement) the skeleton to be visible
+width = 3;
+axes(ax(23))
+%nexttile
+imshow(imdilate(imrotate(PR_methods.roi.sk.('GT'),rotate_angle), ones(width)),[])
+title('skeleton ground truth')
+axis off
+for iP = 1:10
+    axes(ax(iP+23))
+    n = iP+offset;
+    method = methods{iP};
+    %         nexttile
+    imshow(imerode(imrotate(PR_methods.images_sk.(method)(:,:,:,PR_methods.evaluation_sk{method,'F1_idx'}),rotate_angle),ones(width)),[])
+    title({['F1 = ' num2str(PR_methods.evaluation_sk{method,'F1'},2)], ['FBeta2 = ' num2str(PR_methods.evaluation_sk{method,'FBeta2'},2)]})
+    axis off
+end
+% tidy up the axes
+for ia = 1:33
+    axes(ax(ia))
+    ax(ia).XTick = [];
+    ax(ia).YTick = [];
+    axis off
+    box on
+    ax(ia).Title.FontWeight = 'normal';
+    ax(ia).Title.FontUnits = 'points';
+    ax(ia).Title.FontSize = 12;
+    if ia == 1
+        ax(ia).YLabel.String = 'enhanced image';
+    elseif ia == 12
+        ax(ia).YLabel.String = 'full-width binary';
+    elseif ia == 23
+        ax(ia).YLabel.String = 'skeleton';
+    end
+end
+end
 

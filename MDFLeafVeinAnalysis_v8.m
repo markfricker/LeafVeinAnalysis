@@ -276,6 +276,8 @@ skLoop = W == 0;
 skLoop = bwmorph(skLoop,'thin',Inf);
 % find any isolated loops
 skRing = skLoop & ~bwareafilt(skLoop,1);
+% exclude rings toughing the border
+skRing = imclearborder(skRing);
 if any(skRing(:))
     % fill the loops
     skLoopFill = imfill(skRing,'holes');
