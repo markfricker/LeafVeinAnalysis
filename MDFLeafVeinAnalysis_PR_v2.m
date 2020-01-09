@@ -323,7 +323,7 @@ switch method
             im_out = max(im_out,imresize(temp,size(im_in)));
         end
     case 'BowlerHat'
-        for iL = 1:2;%nLevels-1
+        for iL = 1:3;%nLevels-1
             for iW = minW:2*minW+1
                 [temp,~] = Granulo2D(I{iL},iW*3,6);
                 temp = imclose(temp,D);
@@ -331,7 +331,7 @@ switch method
             end
         end
     case 'MFATl'
-        for iL = 1:2;%nLevels
+        for iL = 1:3;%nLevels
             % Parameters setting
             sigmas = [1:1:3];
             spacing = .7; whiteondark = true;
@@ -342,7 +342,7 @@ switch method
             im_out = max(im_out,imresize(temp,size(im_in)));
         end
     case 'MFATp'
-        for iL = 1:2;%nLevels
+        for iL = 1:3;%nLevels
             % Parameters setting
             sigmas = [1:1:3];
             spacing = .7; whiteondark = true;
@@ -453,8 +453,8 @@ for iT = 1:nT
         bw_out(:,:,iT)=temp;
     end
     % do some area filtering to remove noise
-    se = strel('disk',5);
-    bw_out(:,:,iT) = imopen(bw_out(:,:,iT),se);
+%     se = strel('disk',5);
+%     bw_out(:,:,iT) = imopen(bw_out(:,:,iT),se);
     % keep the largest connected component
     %bw_out(:,:,iT) = bwareafilt(bw_out(:,:,iT),1);
 end
