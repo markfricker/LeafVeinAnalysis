@@ -6,7 +6,7 @@ ShowFigs = 1;
 ExportFigs = 1;
 %% set up parameters
 micron_per_pixel = 1.6807;
-DownSample = 2;
+DownSample = 1;
 %% set up starting directory on the remote server
 if remote == 1
     addpath('/soge-home/projects/leaf-gpu/Matlab working')

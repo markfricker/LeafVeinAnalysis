@@ -315,7 +315,7 @@ switch method
             end
         end
     case 'FeatureType'
-        for iL = 1:2;%:3
+        for iL = 1:2
             [M,m,or,featType,pc,EO,T,pcSum] = phasecong3(I{iL}, ...
                 5, 6, minW, 2.1, 0.55, 2, 0.5, 10, -1);
             temp = single((featType+pi/2)/pi);
@@ -890,7 +890,7 @@ axes(ax(12))
 %nexttile
 im_dis = imrotate(PR_methods.roi.GT,rotate_angle);
 imshow(im_dis,[])
-title('full-width ground truth')
+title({'full-width, ground truth'})
 % display the full width PR images
 axis off
 for iP = 1:10
@@ -908,7 +908,7 @@ width = 3;
 axes(ax(23))
 %nexttile
 imshow(imdilate(imrotate(PR_methods.roi.sk.('GT'),rotate_angle), ones(width)),[])
-title('skeleton ground truth')
+title({'skeleton, ground truth'})
 axis off
 for iP = 1:10
     axes(ax(iP+23))
