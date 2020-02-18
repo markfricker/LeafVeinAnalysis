@@ -6,6 +6,19 @@ dir_out_PR_graphs = ['..' filesep 'summary' filesep 'PR' filesep 'graphs' filese
 %% set up parameters
 micron_per_pixel = micron_per_pixel.*DownSample;
 radius = 45;
+%% set up the display colors and fonts
+cols = [248 118 109;
+    216 144 0;
+    163 165 0;
+    57 182 0;
+    0 191 125;
+    0 191 196;
+    0 176 246;
+    149 144 255;
+    231 107 243;
+    255 98 188]./255;
+cols = flipud(cols);
+fontsz = 14;
 %% set up threshold parameters
 Tmin = 0;
 Tmax = 1;
@@ -37,7 +50,7 @@ PR_methods.roi.GT = bw_GT(BB(2):BB(2)+BB(4)-1,BB(1):BB(1)+BB(3)-1);
 PR_methods.roi.invert = imcomplement(mat2gray(PR_methods.roi.im));
 
 %% set up an array of methods
-PR_methods.name = {'CNN';'Vesselness';'MFATl';'MFATp';'BowlerHat';'FeatureType';'midgrey';'Niblack';'Bernsen';'Sauvola'};
+PR_methods.name = {'Bernsen';'BowlerHat';'CNN';'FeatureType';'MFATl';'MFATp';'Midgrey';'Niblack';'Sauvola';'Vesselness'};
 % choose which methods to test
 PR_methods.select = logical([1 1 1 1 1 1 1 1 1 1]);
 % set up the evaluation table for the full width images
@@ -68,7 +81,7 @@ results.TimeStamp = datetime('now','TimeZone','local','Format','d-MMM-y HH:mm:ss
 results.MicronPerPixel = micron_per_pixel;
 results.DownSample = DownSample;
 %% set up blank results tables
-results.F1 = array2table(nan(11,11));
+results.F1 = array2table(nan(11,12));
 results.F1.Properties.RowNames = [{'GT'};PR_methods.name];
 results.FBeta2 = results.F1;
 results.F1_ratio = results.F1;
@@ -80,6 +93,7 @@ for iM = 1:sum(PR_methods.select)
     n = n+1;
     idx = find(PR_methods.select);
     method = PR_methods.name{idx(iM)};
+    T = Tmin:Tint:Tmax-Tint;
     % normalise and enhance the images with variable thresholds
     switch method
         case {'CNN'}
@@ -95,16 +109,21 @@ for iM = 1:sum(PR_methods.select)
     end
     % extract the full width binary image
     switch method
+        case {'Niblack';'Midgrey'}
+            T = T-0.5; % allow the offset to run from -0.5 to 0.5
+    end
+    switch method
         case {'CNN';'Vesselness';'FeatureType';'BowlerHat';'MFATl';'MFATp'}
             % use a hysteresis threshold for the enhanced images
             PR_methods.fullwidth.(method) = fnc_im_to_bw(PR_methods.enhanced.(method),PR_methods.roi.bw,PR_methods.roi.vein,PR_methods.roi.mask,T,'hysteresis',radius);
-        case {'Niblack';'midgrey';'Bernsen';'Sauvola'}
+        case {'Niblack';'Midgrey';'Bernsen';'Sauvola'}
             % apply the local thresholding to the other images
             PR_methods.fullwidth.(method) = fnc_im_to_bw(PR_methods.enhanced.(method),PR_methods.roi.bw,PR_methods.roi.vein,PR_methods.roi.mask,T,method,radius);
         otherwise
             PR_methods.fullwidth.(method) = PR_methods.enhanced.(method);
     end
     % evaluate performance against the ground truth using Precision-Recall analysis
+    
     [PR_methods.results_fw.(method), PR_methods.images_fw.(method)] = fnc_PRC_bw(PR_methods.roi.GT,PR_methods.fullwidth.(method),T);
     % get the best values from the results table
     [PR_methods.evaluation_fw{method,'F1'}, PR_methods.evaluation_fw{method,'F1_idx'}] = max(PR_methods.results_fw.(method){:,'F1'});
@@ -138,9 +157,10 @@ for iM = 1:sum(PR_methods.select)
     PR_methods.FBeta2_sk.(method) = PR_methods.sk.(method)(:,:,FBeta2_idx_sk);
     % get some basic graph results for the ground truth
     if n ==1
-        GT_full = fnc_skeleton_analysis(PR_methods.roi.sk.('GT'),PR_methods.roi.bw);
+        GT_full = fnc_skeleton_analysis(PR_methods.roi.sk.('GT'),PR_methods.roi.bw, 1);
     end
-    results_full = fnc_skeleton_analysis(PR_methods.sk.(method),PR_methods.roi.bw);
+    % get some basic graph results for each method with varying threshold
+    results_full = fnc_skeleton_analysis(PR_methods.sk.(method),PR_methods.roi.bw, T);
     if iM == 1
         results.('GT') = GT_full;
         results.F1(1,:) = GT_full;
@@ -151,7 +171,6 @@ for iM = 1:sum(PR_methods.select)
     results.(method) = results_full;
     results.F1(idx(iM)+1,:) = results_full(F1_idx_sk,:);
     results.FBeta2(idx(iM)+1,:) = results_full(FBeta2_idx_sk,:);
-    
     disp(['Elapsed time for method: ' method ' = ' num2str(toc)])
 end
 %% calcuate the ratio values against the ground truth
@@ -162,18 +181,23 @@ results.FBeta2_ratio([true PR_methods.select],:) = array2table(log(results.FBeta
 results.FBeta2_ratio.Properties.VariableNames = results.FBeta2.Properties.VariableNames;
 results.FBeta2_ratio.Properties.RowNames = results.FBeta2.Properties.RowNames;
 %% display the PR graphs
-hfig = fnc_display_threshold_results(results,PR_methods);
+hfig = fnc_display_threshold_results(results,PR_methods, cols, fontsz);
 export_fig([dir_out_PR_graphs FolderName '_PR_threshold'],'-native','-png',hfig)
 delete(hfig)
-hfig = fnc_display_fw_PR(PR_methods);
+hfig = fnc_display_fw_PR(PR_methods, cols, fontsz);
 export_fig([dir_out_PR_graphs FolderName '_PR_fw_plots'],'-native','-png',hfig)
 delete(hfig)
-hfig = fnc_display_sk_PR(PR_methods);
+hfig = fnc_display_sk_PR(PR_methods, cols, fontsz);
 export_fig([dir_out_PR_graphs FolderName '_PR_sk_plots'],'-native','-png',hfig)
 delete(hfig)
 %% display the figure
-hfig = fnc_display_images(PR_methods);
-export_fig([dir_out_PR_images FolderName '_PR_images'],'-r150','-png',hfig)
+hfig = fnc_display_images(PR_methods,'F1',fontsz);
+export_fig([dir_out_PR_images FolderName '_F1_images'],'-r150','-png',hfig)
+export_fig([dir_out_PR_images FolderName '_F1_images'],'-pdf',hfig)
+delete(hfig)
+hfig = fnc_display_images(PR_methods,'FBeta2',fontsz);
+export_fig([dir_out_PR_images FolderName '_FBeta2_images'],'-r150','-png',hfig)
+export_fig([dir_out_PR_images FolderName '_FBeta2_images'],'-pdf',hfig)
 delete(hfig)
 %% add in the file and method indexes
 results.F1.Filename = repelem({FolderName},height(results.F1),1);
@@ -190,6 +214,10 @@ results.FBeta2_ratio.Method = results.FBeta2_ratio.Properties.RowNames;
 results.FBeta2_ratio = results.FBeta2_ratio(:,[end-1:end, 1:end-2]);
 %% save the results
 save([dir_out_PR_results [FolderName '_results']],'results','PR_methods')
+sheets = setdiff(fieldnames(results),{'File';'TimeStamp';'MicronPerPixel';'DownSample'});
+for iS = 1:numel(sheets)
+    writetable(results.(sheets{iS}),[dir_out_PR_results [FolderName '_results.xlsx']],'FileType','Spreadsheet','Sheet',sheets{iS},'WriteVariableNames',true,'WriteRowNames',true)
+end
 end
 %% all functions
 function [im,im_cnn,bw_mask,bw_vein,bw_roi,bw_GT] = fnc_load_CNN_images(FolderName,DownSample)
@@ -277,8 +305,8 @@ end
 function im_out = fnc_enhance_im(im_in,DownSample,method)
 switch method
     case {'CNN'}
-        im_out = mat2gray(im_in);    
-    case {'im';'midgrey';'Niblack';'Bernsen';'Sauvola';'Singh'}
+        im_out = mat2gray(im_in);
+    case {'im';'Midgrey';'Niblack';'Bernsen';'Sauvola';'Singh'}
         im_out = imcomplement(mat2gray(im_in));
     case {'Vesselness';'FeatureType';'BowlerHat';'MFATl';'MFATp'} % use an image pyramid to span scales
         % find the scales for the filter
@@ -362,10 +390,6 @@ se = strel('disk',radius);
 nT = length(T);
 bw_out = false([size(im_in) nT]);
 switch method
-    case {'Niblack';'midgrey'}
-        T = T-0.5; % allow the offset to run from -0.5 to 0.5
-end
-switch method
     case 'Niblack'
         m = imfilter(im_in,fspecial('disk',radius),'replicate'); % local mean
         s = stdfilt(im_in,getnhood(se)); % local std
@@ -373,7 +397,7 @@ switch method
             level = m + T(iT) * s;
             bw_out(:,:,iT) = im_in > level;
         end
-    case 'midgrey'
+    case 'Midgrey'
         lmin = imerode(im_in,se);
         lmax = imdilate(im_in,se);
         mg = (lmin + lmax)/2;
@@ -453,8 +477,8 @@ for iT = 1:nT
         bw_out(:,:,iT)=temp;
     end
     % do some area filtering to remove noise
-%     se = strel('disk',5);
-%     bw_out(:,:,iT) = imopen(bw_out(:,:,iT),se);
+    %     se = strel('disk',5);
+    %     bw_out(:,:,iT) = imopen(bw_out(:,:,iT),se);
     % keep the largest connected component
     %bw_out(:,:,iT) = bwareafilt(bw_out(:,:,iT),1);
 end
@@ -483,17 +507,17 @@ switch method
         % repeat to ensure a single pixel skeleton
         sk_out = bwmorph(sk_out,'thin',inf);
     otherwise
-%     case {'CNN';'Vesselness';'FeatureType';'BowlerHat';'MFATl';'MFATp'}
-%         % apply the threshold during the skeletonisation of the enhanced
-%         % image
+        %     case {'CNN';'Vesselness';'FeatureType';'BowlerHat';'MFATl';'MFATp'}
+        %         % apply the threshold during the skeletonisation of the enhanced
+        %         % image
         for iT = 1:nT
             [~, sk_out(:,:,iT)] = fnc_skeleton(im_in(:,:,iT),roi_vein,T(iT));
         end
-%     case {'Niblack';'midgrey';'Bernsen';'Sauvola'}
-%         % use the binary image calculated at different threshold values
-%         for iT = 1:nT
-%             [~, sk_out(:,:,iT)] = fnc_skeleton(im_in(:,:,iT),roi_vein,T(iT));
-%         end
+        %     case {'Niblack';'Midgrey';'Bernsen';'Sauvola'}
+        %         % use the binary image calculated at different threshold values
+        %         for iT = 1:nT
+        %             [~, sk_out(:,:,iT)] = fnc_skeleton(im_in(:,:,iT),roi_vein,T(iT));
+        %         end
 end
 end
 
@@ -613,7 +637,7 @@ sk_out = bwmorph(sk_out,'fill');
 sk_out = bwmorph(sk_out,'thin',inf);
 end
 
-function results = fnc_skeleton_analysis(sk_in,roi_in)
+function results = fnc_skeleton_analysis(sk_in,roi_in,T)
 results = table;
 ROIArea = sum(roi_in(:));
 for iT = 1:size(sk_in,3)
@@ -622,6 +646,7 @@ for iT = 1:size(sk_in,3)
     ep = bwmorph(sk,'endpoints');
     nodes = bwmorph(bp|ep,'thicken',1);
     edges = bwconncomp(sk&~nodes,8);
+    results.Threshold(iT) = T(iT);
     results.Edges(iT) = edges.NumObjects;
     results.Length(iT) = sum(sum(sk));
     results.LengthDensity(iT) = sum(sum(sk))/ROIArea;
@@ -638,57 +663,59 @@ for iT = 1:size(sk_in,3)
 end
 end
 
-function hfig = fnc_display_fw_PR(PR_methods)
+function hfig = fnc_display_fw_PR(PR_methods, cols, fontsz)
 methods = PR_methods.name(PR_methods.select);
-cols = {'r-';'g-';'b-';'c-';'m-';'y-';'r:';'g:';'b:';'c:';'m:';'y:'};
-F1 = {'r*';'g*';'b*';'c*';'m*:';'y*';'r*';'g*';'b*';'c*';'m*';'y*'};
-FBeta2 = {'ro';'go';'bo';'co';'mo:';'yo';'ro';'go';'bo';'co';'mo';'yo'};
-mrks = {'.';'.';'.';'.';'.';'.';'.';'+';'+';'+';'+';'+'};
+% cols = colorcet('r3','N',11);
+style = repmat('-',11,1);
+F1 = repmat('*',11,1);
+FBeta2 = repmat('o',11,1);
+mrks = repmat('.',11,1);
 % plot the precision-recall plots and mark the optimum
 hfig = figure('Renderer','painters');
 hfig.Color = 'w';
 for iM = 1:numel(methods)
-    h(iM) = plot(PR_methods.results_fw.(methods{iM}).Recall,PR_methods.results_fw.(methods{iM}).Precision,cols{iM},'Marker',mrks{iM});
+    h(iM) = plot(PR_methods.results_fw.(methods{iM}).Recall,PR_methods.results_fw.(methods{iM}).Precision,'Color',cols(iM,:),'LineStyle',style(iM,:),'Marker',mrks(iM,:));
     hold on
-    plot(PR_methods.results_fw.(methods{iM}).Recall(PR_methods.evaluation_fw{methods{iM},'F1_idx'}),PR_methods.results_fw.(methods{iM}).Precision(PR_methods.evaluation_fw{methods{iM},'F1_idx'}),F1{iM})
-    plot(PR_methods.results_fw.(methods{iM}).Recall(PR_methods.evaluation_fw{methods{iM},'FBeta2_idx'}),PR_methods.results_fw.(methods{iM}).Precision(PR_methods.evaluation_fw{methods{iM},'FBeta2_idx'}),FBeta2{iM})
+    plot(PR_methods.results_fw.(methods{iM}).Recall(PR_methods.evaluation_fw{methods{iM},'F1_idx'}),PR_methods.results_fw.(methods{iM}).Precision(PR_methods.evaluation_fw{methods{iM},'F1_idx'}),'MarkerEdgeColor',cols(iM,:),'Marker',F1(iM,:))
+    plot(PR_methods.results_fw.(methods{iM}).Recall(PR_methods.evaluation_fw{methods{iM},'FBeta2_idx'}),PR_methods.results_fw.(methods{iM}).Precision(PR_methods.evaluation_fw{methods{iM},'FBeta2_idx'}),'MarkerEdgeColor',cols(iM,:),'Marker',FBeta2(iM,:))
 end
 xlabel('Recall')
 ylabel('Precision')
 ax = gca;
 ax.FontUnits = 'points';
-ax.FontSize = 14;
+ax.FontSize = fontsz;
 legend(h,methods,'Location','SouthWest')
 end
 
-function hfig = fnc_display_sk_PR(PR_methods)
+function hfig = fnc_display_sk_PR(PR_methods, cols, fontsz)
 methods = PR_methods.name(PR_methods.select);
-cols = {'r-';'g-';'b-';'c-';'m-';'y-';'r:';'g:';'b:';'c:';'m:';'y:'};
-F1 = {'r*';'g*';'b*';'c*';'m*:';'y*';'r*';'g*';'b*';'c*';'m*';'y*'};
-FBeta2 = {'ro';'go';'bo';'co';'mo:';'yo';'ro';'go';'bo';'co';'mo';'yo'};
-mrks = {'.';'.';'.';'.';'.';'.';'.';'+';'+';'+';'+';'+'};
+%cols = colorcet('r3','N',11);
+style = repmat('-',11,1);
+F1 = repmat('*',11,1);
+FBeta2 = repmat('o',11,1);
+mrks = repmat('.',11,1);
 % plot the precision-recall plots and mark the optimum
 hfig = figure('Renderer','painters');
 hfig.Color = 'w';
 for iM = 1:numel(methods)
     method = methods{iM};
-    h(iM) = plot(PR_methods.results_sk.(method).Recall,PR_methods.results_sk.(method).Precision,cols{iM},'Marker',mrks{iM});
+    h(iM) = plot(PR_methods.results_sk.(method).Recall,PR_methods.results_sk.(method).Precision,'Color',cols(iM,:),'LineStyle',style(iM,:),'Marker',mrks(iM,:));
     hold on
-    plot(PR_methods.results_sk.(method).Recall(PR_methods.evaluation_sk{method,'F1_idx'}),PR_methods.results_sk.(method).Precision(PR_methods.evaluation_sk{method,'F1_idx'}),F1{iM})
-    plot(PR_methods.results_sk.(method).Recall(PR_methods.evaluation_sk{method,'FBeta2_idx'}),PR_methods.results_sk.(method).Precision(PR_methods.evaluation_sk{method,'FBeta2_idx'}),FBeta2{iM})
+    plot(PR_methods.results_sk.(method).Recall(PR_methods.evaluation_sk{method,'F1_idx'}),PR_methods.results_sk.(method).Precision(PR_methods.evaluation_sk{method,'F1_idx'}),'MarkerEdgeColor',cols(iM,:),'Marker',F1(iM,:))
+    plot(PR_methods.results_sk.(method).Recall(PR_methods.evaluation_sk{method,'FBeta2_idx'}),PR_methods.results_sk.(method).Precision(PR_methods.evaluation_sk{method,'FBeta2_idx'}),'MarkerEdgeColor',cols(iM,:),'Marker',FBeta2(iM,:))
 end
 xlabel('Recall')
 ylabel('Precision')
 ax = gca;
 ax.FontUnits = 'points';
-ax.FontSize = 14;
+ax.FontSize = fontsz;
 legend(h,strrep(methods,'_sk',''),'Location','SouthWest')
 end
 
-function hfig = fnc_display_threshold_results(results,PR_methods)
+function hfig = fnc_display_threshold_results(results,PR_methods, cols, fontsz)
 methods = PR_methods.name(PR_methods.select);
-cols = {'r';'g';'b';'c';'m';'y';'k';'r';'g';'b';'c';'m';'y'};
-styles = {'-';'-';'-';'-';'-';'-';'-';':';':';':';':';':';':'};
+% cols = colorcet('r3','N',11);
+style = repmat('-',11,1);
 hfig = figure('Renderer','painters','Units','normalized','Position',[0 0 1 1]);
 hfig.Color = 'w';
 for iM = 1:numel(methods)
@@ -700,18 +727,18 @@ for iM = 1:numel(methods)
     F1_idx_sk = PR_methods.evaluation_sk{method,'F1_idx'};
     FBeta2_idx_sk = PR_methods.evaluation_sk{method,'FBeta2_idx'};
     x = (1:size(ratio,1));
-    plot_metrics = [1 2 3 4 5 6 7 8 9 10 11];
+    plot_metrics = [2 3 4 5 6 7 8 9 10 11 12];
     for i = 1:numel(plot_metrics)
         ax = subplot(3,4,i);
         plot(x,ratio(:,plot_metrics(i)), ...
-            'Linestyle',styles{iM}, ...
-            'Color',cols{iM}, ...
+            'Linestyle',style(iM,:), ...
+            'Color',cols(iM,:), ...
             'Marker','*', ...
             'MarkerIndices',F1_idx_sk)
         hold on
         plot(x,ratio(:,plot_metrics(i)), ...
             'LineStyle','none', ...
-            'Color',cols{iM}, ...
+            'Color',cols(iM,:), ...
             'Marker','o', ...
             'MarkerIndices',FBeta2_idx_sk)
         title(names{plot_metrics(i)})
@@ -723,10 +750,10 @@ for iM = 1:numel(methods)
         ax.FontSize = 8;
         ax.Title.FontWeight = 'normal';
         ax.Title.FontUnits = 'points';
-        ax.Title.FontSize = 10;
+        ax.Title.FontSize = fontsz;
         if i == 1
             subplot(3,4,12)
-            plot(x,ratio(:,plot_metrics(i)),'LineStyle',styles{iM},'Marker','*','MarkerIndices',F1_idx_sk,'Color',cols{iM})
+            plot(x,ratio(:,plot_metrics(i)),'LineStyle',style(iM,:),'Marker','*','MarkerIndices',F1_idx_sk,'Color',cols(iM,:))
             hold on
             legend(methods,'Location','BestOutside')
         end
@@ -820,11 +847,11 @@ for ia = 1:18
 end
 end
 
-function hfig = fnc_display_images(PR_methods)
+function hfig = fnc_display_images(PR_methods, mode, fontsz)
 hfig = figure('Renderer','painters');
 hfig.Units = 'normalized';
 hfig.Position = [0 0.1 1 0.8];
-%hfig.Color = 'w';
+hfig.Color = 'w';
 offset = 0;
 % set up the axes to fill the figure
 ia = 0;
@@ -864,7 +891,7 @@ pic(~PR_methods.roi.bw) = 1;
 im_dis = imrotate(pic,rotate_angle);
 %nexttile
 imshow(imcomplement(im_dis),[])
-title('original')
+title('Original')
 axis off
 % display all methods
 for iP = 1:10
@@ -877,12 +904,17 @@ for iP = 1:10
             pic(~PR_methods.roi.bw) = 0;
             im_dis = imrotate(pic,rotate_angle);
         otherwise
+            switch mode
+                case 'F1'
+                    im_dis = imrotate(PR_methods.F1_fw.(method),rotate_angle);
+                case 'FBeta2'
             im_dis = imrotate(PR_methods.FBeta2_fw.(method),rotate_angle);
+            end
     end
     
     %nexttile
     imshow(im_dis,[])
-    title(methods{n})
+    title(['  ' methods{n}])
     axis off
 end
 % display the full-width ground-truth
@@ -890,7 +922,7 @@ axes(ax(12))
 %nexttile
 im_dis = imrotate(PR_methods.roi.GT,rotate_angle);
 imshow(im_dis,[])
-title({'full-width, ground truth'})
+title({'Full-width', 'Ground truth'})
 % display the full width PR images
 axis off
 for iP = 1:10
@@ -898,7 +930,7 @@ for iP = 1:10
     method = methods{iP};
     n = iP+offset;
     %nexttile
-    imshow(imrotate(PR_methods.images_fw.(method)(:,:,:,PR_methods.evaluation_fw{method,'F1_idx'}),rotate_angle),[])
+    imshow(imrotate(PR_methods.images_fw.(method)(:,:,:,PR_methods.evaluation_fw{method,[mode '_idx']}),rotate_angle),[])
     title({['F1 = ' num2str(PR_methods.evaluation_fw{method,'F1'},2)], ['FBeta2 = ' num2str(PR_methods.evaluation_fw{method,'FBeta2'},2)]})
     axis off
 end
@@ -908,14 +940,14 @@ width = 3;
 axes(ax(23))
 %nexttile
 imshow(imdilate(imrotate(PR_methods.roi.sk.('GT'),rotate_angle), ones(width)),[])
-title({'skeleton, ground truth'})
+title({'Skeleton', 'Ground truth'})
 axis off
 for iP = 1:10
     axes(ax(iP+23))
     n = iP+offset;
     method = methods{iP};
     %         nexttile
-    imshow(imerode(imrotate(PR_methods.images_sk.(method)(:,:,:,PR_methods.evaluation_sk{method,'F1_idx'}),rotate_angle),ones(width)),[])
+    imshow(imerode(imrotate(PR_methods.images_sk.(method)(:,:,:,PR_methods.evaluation_sk{method,[mode '_idx']}),rotate_angle),ones(width)),[])
     title({['F1 = ' num2str(PR_methods.evaluation_sk{method,'F1'},2)], ['FBeta2 = ' num2str(PR_methods.evaluation_sk{method,'FBeta2'},2)]})
     axis off
 end
@@ -928,14 +960,31 @@ for ia = 1:33
     box on
     ax(ia).Title.FontWeight = 'normal';
     ax(ia).Title.FontUnits = 'points';
-    ax(ia).Title.FontSize = 12;
-    if ia == 1
-        ax(ia).YLabel.String = 'enhanced image';
-    elseif ia == 12
-        ax(ia).YLabel.String = 'full-width binary';
+    if ia <= 12
+        ax(ia).Title.FontSize = fontsz+2;
     elseif ia == 23
-        ax(ia).YLabel.String = 'skeleton';
+        ax(ia).Title.FontSize = fontsz+2; 
+    else
+        ax(ia).Title.FontSize = fontsz; 
     end
+    posG = ax(ia).Position;
+    posT = ax(ia).Title.Extent;
+    if ia <= 11
+        text(posG(1),posT(2),['(' char(96+ia) ')'],'FontSize',fontsz,'VerticalAlignment','bottom','FontWeight','bold')
+    elseif ia<=22
+        text(posG(1),posT(2) - posT(4),['(' char(96+ia-11) ''')'],'FontSize',fontsz,'VerticalAlignment','top','FontWeight','bold')
+    else
+        text(posG(1),posT(2) - posT(4),['(' char(96+ia-22) '")'],'FontSize',fontsz,'VerticalAlignment','top','FontWeight','bold')
+    end
+
+    
+%     if ia == 1
+%         ax(ia).YLabel.String = 'enhanced image';
+%     elseif ia == 12
+%         ax(ia).YLabel.String = 'full-width binary';
+%     elseif ia == 23
+%         ax(ia).YLabel.String = 'skeleton';
+%     end
 end
 end
 
