@@ -6,8 +6,9 @@ dir_out_PR_graphs = ['..' filesep 'summary' filesep 'PR' filesep 'graphs' filese
 %% set up parameters
 micron_per_pixel = micron_per_pixel.*DownSample;
 radius = 45;
+% %% set up the display colors and fonts
 %% set up the display colors and fonts
-cols = [248 118 109;
+cols = [255 0 0;
     216 144 0;
     163 165 0;
     57 182 0;
@@ -17,8 +18,17 @@ cols = [248 118 109;
     149 144 255;
     231 107 243;
     255 98 188]./255;
-cols = flipud(cols);
-fontsz = 14;
+% cols = [248 118 109;
+%     216 144 0;
+%     163 165 0;
+%     57 182 0;
+%     0 191 125;
+%     0 191 196;
+%     0 176 246;
+%     149 144 255;
+%     231 107 243;
+%     255 98 188]./255;
+fontsz = 16;
 %% set up threshold parameters
 Tmin = 0;
 Tmax = 1;
@@ -50,7 +60,7 @@ PR_methods.roi.GT = bw_GT(BB(2):BB(2)+BB(4)-1,BB(1):BB(1)+BB(3)-1);
 PR_methods.roi.invert = imcomplement(mat2gray(PR_methods.roi.im));
 
 %% set up an array of methods
-PR_methods.name = {'Bernsen';'BowlerHat';'CNN';'FeatureType';'MFATl';'MFATp';'Midgrey';'Niblack';'Sauvola';'Vesselness'};
+PR_methods.name = {'CNN';'Midgrey';'Niblack';'Bernsen';'Sauvola';'Vesselness';'MFATl';'MFATp';'FeatureType';'BowlerHat'};
 % choose which methods to test
 PR_methods.select = logical([1 1 1 1 1 1 1 1 1 1]);
 % set up the evaluation table for the full width images
@@ -182,21 +192,21 @@ results.FBeta2_ratio.Properties.VariableNames = results.FBeta2.Properties.Variab
 results.FBeta2_ratio.Properties.RowNames = results.FBeta2.Properties.RowNames;
 %% display the PR graphs
 hfig = fnc_display_threshold_results(results,PR_methods, cols, fontsz);
-export_fig([dir_out_PR_graphs FolderName '_PR_threshold'],'-native','-png',hfig)
+export_fig([dir_out_PR_graphs FolderName '_PR_threshold'],'-r300','-png',hfig)
 delete(hfig)
 hfig = fnc_display_fw_PR(PR_methods, cols, fontsz);
-export_fig([dir_out_PR_graphs FolderName '_PR_fw_plots'],'-native','-png',hfig)
+export_fig([dir_out_PR_graphs FolderName '_PR_fw_plots'],'-r300','-png',hfig)
 delete(hfig)
 hfig = fnc_display_sk_PR(PR_methods, cols, fontsz);
-export_fig([dir_out_PR_graphs FolderName '_PR_sk_plots'],'-native','-png',hfig)
+export_fig([dir_out_PR_graphs FolderName '_PR_sk_plots'],'-r300','-png',hfig)
 delete(hfig)
 %% display the figure
-hfig = fnc_display_images(PR_methods,'F1',fontsz);
-export_fig([dir_out_PR_images FolderName '_F1_images'],'-r150','-png',hfig)
+hfig = fnc_display_images(PR_methods,'F1',cols, fontsz);
+export_fig([dir_out_PR_images FolderName '_F1_images'],'-png',hfig)
 export_fig([dir_out_PR_images FolderName '_F1_images'],'-pdf',hfig)
 delete(hfig)
-hfig = fnc_display_images(PR_methods,'FBeta2',fontsz);
-export_fig([dir_out_PR_images FolderName '_FBeta2_images'],'-r150','-png',hfig)
+hfig = fnc_display_images(PR_methods,'FBeta2',cols,fontsz);
+export_fig([dir_out_PR_images FolderName '_FBeta2_images'],'-png',hfig)
 export_fig([dir_out_PR_images FolderName '_FBeta2_images'],'-pdf',hfig)
 delete(hfig)
 %% add in the file and method indexes
@@ -353,7 +363,7 @@ switch method
     case 'BowlerHat'
         for iL = 1:3;%nLevels-1
             for iW = minW:2*minW+1
-                [temp,~] = Granulo2D(I{iL},iW*3,6);
+                [temp,~] = Granulo2D(I{iL},iW*3,12);
                 temp = imclose(temp,D);
                 im_out = max(im_out,imresize(temp,size(im_out)));
             end
@@ -682,6 +692,8 @@ end
 xlabel('Recall')
 ylabel('Precision')
 ax = gca;
+ax.XLim = [0 1];
+ax.YLim = [0 1];
 ax.FontUnits = 'points';
 ax.FontSize = fontsz;
 legend(h,methods,'Location','SouthWest')
@@ -707,6 +719,8 @@ end
 xlabel('Recall')
 ylabel('Precision')
 ax = gca;
+ax.XLim = [0 1];
+ax.YLim = [0 1];
 ax.FontUnits = 'points';
 ax.FontSize = fontsz;
 legend(h,strrep(methods,'_sk',''),'Location','SouthWest')
@@ -780,7 +794,7 @@ hfig.Color = 'w';
 idx = PR_methods.select;
 methods = {PR_methods.name{idx}};
 % choose the orientation to be portrait
-axes(ax(1))
+% axes(ax(1))
 if size(PR_methods.roi.im,1) < size(PR_methods.roi.im,2)
     rotate_angle = 90;
 else
@@ -847,144 +861,144 @@ for ia = 1:18
 end
 end
 
-function hfig = fnc_display_images(PR_methods, mode, fontsz)
+function hfig = fnc_display_images(PR_methods, mode, cols, fontsz)
 hfig = figure('Renderer','painters');
 hfig.Units = 'normalized';
-hfig.Position = [0 0.1 1 0.8];
+W = 0.7;
+H = 1;
+hfig.Position = [0 0 W H];
 hfig.Color = 'w';
-offset = 0;
-% set up the axes to fill the figure
-ia = 0;
-cborder = 0.002;
-rborder = 0.005;
-width = (1-cborder*12)/12;
-height = (1-rborder*4)/3;
-for r = 1:3
-    for c = 1:11
-        ia = ia+1;
-        left = cborder + round(((c-1)*width)+(cborder*c),4);
-        bottom = rborder + round((3-r)*height +(3-r)*rborder,4);
-        ax(ia) = subplot(3,11,ia);
-        ax(ia).XTick = [];
-        ax(ia).YTick = [];
-        ax(ia).Position = [left bottom width height];
-    end
-end
+% offset = 0;
 
-
-%
-% tiledlayout(3,11,'TileSpacing','none','Padding','none'); % only runs in
+tiledlayout(6,6,'TileSpacing','none','Padding','none'); % only runs in
 % 2019b
 %
 idx = PR_methods.select;
 methods = {PR_methods.name{idx}};
 % choose the orientation to be landscape
-axes(ax(1))
-if size(PR_methods.roi.im,1) < size(PR_methods.roi.im,2)
+%axes(ax(1))
+if size(PR_methods.roi.im,1) > size(PR_methods.roi.im,2)
     rotate_angle = 90;
 else
     rotate_angle = 0;
 end
 % show the original image in inverse greyscale
-pic = PR_methods.roi.im;
+pic = imcomplement(PR_methods.roi.im);
 pic(~PR_methods.roi.bw) = 1;
 im_dis = imrotate(pic,rotate_angle);
-%nexttile
+nexttile
 imshow(imcomplement(im_dis),[])
 title('Original')
 axis off
 % display all methods
 for iP = 1:10
-    n = iP+offset;
-    axes(ax(iP+1))
+%     n = iP+offset;
     method = methods{iP};
     switch method
         case {'CNN';'Vesselness';'MFATl';'MFATp';'BowlerHat';'FeatureType'}
             pic = PR_methods.enhanced.(method);
-            pic(~PR_methods.roi.bw) = 0;
+            pic(~PR_methods.roi.bw) = max(pic(:));
             im_dis = imrotate(pic,rotate_angle);
         otherwise
             switch mode
                 case 'F1'
-                    im_dis = imrotate(PR_methods.F1_fw.(method),rotate_angle);
+                    pic = PR_methods.F1_fw.(method);
                 case 'FBeta2'
-            im_dis = imrotate(PR_methods.FBeta2_fw.(method),rotate_angle);
+                    pic = PR_methods.FBeta2_fw.(method);
             end
+            pic(~PR_methods.roi.bw) = max(pic(:));
+            im_dis = imrotate(pic,rotate_angle);
     end
-    
-    %nexttile
+    if iP == 6 % leave a blank tile
+        nexttile
+        axis 'off'
+    end
+    nexttile
     imshow(im_dis,[])
-    title(['  ' methods{n}])
+    title(['  ' methods{iP}], 'Color',cols(iP,:))
     axis off
 end
 % display the full-width ground-truth
-axes(ax(12))
-%nexttile
-im_dis = imrotate(PR_methods.roi.GT,rotate_angle);
+%axes(ax(13))
+nexttile
+im_dis = imrotate(imcomplement(PR_methods.roi.GT),rotate_angle);
 imshow(im_dis,[])
-title({'Full-width', 'Ground truth'})
+title('  Ground truth')
 % display the full width PR images
 axis off
 for iP = 1:10
-    axes(ax(iP+12))
     method = methods{iP};
-    n = iP+offset;
-    %nexttile
+%     n = iP+offset;
+    if iP == 6 % leave a blank tile
+        nexttile
+        axis 'off'
+    end
+    nexttile
     imshow(imrotate(PR_methods.images_fw.(method)(:,:,:,PR_methods.evaluation_fw{method,[mode '_idx']}),rotate_angle),[])
-    title({['F1 = ' num2str(PR_methods.evaluation_fw{method,'F1'},2)], ['FBeta2 = ' num2str(PR_methods.evaluation_fw{method,'FBeta2'},2)]})
+    switch mode
+        case 'F1'
+            title(['${F}_1 = ' num2str(PR_methods.evaluation_fw{method,'F1'},2) '$'], 'Color',cols(iP,:),'Interpreter','latex')
+        case 'FBeta2'
+            title(['${F}_{\beta2} = ' num2str(PR_methods.evaluation_fw{method,'FBeta2'},2) '$'], 'Color',cols(iP,:),'Interpreter','latex')
+    end
     axis off
 end
 % display the skeleton PR images
 % choose the thickness to dilate (original) or erode (complement) the skeleton to be visible
 width = 3;
-axes(ax(23))
-%nexttile
-imshow(imdilate(imrotate(PR_methods.roi.sk.('GT'),rotate_angle), ones(width)),[])
-title({'Skeleton', 'Ground truth'})
+%axes(ax(25))
+nexttile
+imshow(imerode(imrotate(imcomplement(PR_methods.roi.sk.('GT')),rotate_angle), ones(width)),[])
+title('   Skeleton GT')
 axis off
 for iP = 1:10
-    axes(ax(iP+23))
-    n = iP+offset;
+%     n = iP+offset;
     method = methods{iP};
-    %         nexttile
+    if iP == 6 % leave a blank tile
+        nexttile
+        axis 'off'
+    end
+    nexttile
     imshow(imerode(imrotate(PR_methods.images_sk.(method)(:,:,:,PR_methods.evaluation_sk{method,[mode '_idx']}),rotate_angle),ones(width)),[])
-    title({['F1 = ' num2str(PR_methods.evaluation_sk{method,'F1'},2)], ['FBeta2 = ' num2str(PR_methods.evaluation_sk{method,'FBeta2'},2)]})
+    switch mode
+        case 'F1'
+            title(['${F}_1 = ' num2str(PR_methods.evaluation_sk{method,'F1'},2) '$'], 'Color',cols(iP,:),'Interpreter','latex')
+        case 'FBeta2'
+            title(['${F}_{\beta2} = ' num2str(PR_methods.evaluation_sk{method,'FBeta2'},2) '$'], 'Color',cols(iP,:),'Interpreter','latex')
+    end
     axis off
 end
-% tidy up the axes
-for ia = 1:33
-    axes(ax(ia))
-    ax(ia).XTick = [];
-    ax(ia).YTick = [];
+%tidy up the axes
+for ia = 1:36
+    ax = nexttile(ia);
+    ax.XTick = [];
+    ax.YTick = [];
     axis off
     box on
-    ax(ia).Title.FontWeight = 'normal';
-    ax(ia).Title.FontUnits = 'points';
-    if ia <= 12
-        ax(ia).Title.FontSize = fontsz+2;
-    elseif ia == 23
-        ax(ia).Title.FontSize = fontsz+2; 
+    ax.Title.FontWeight = 'normal';
+    ax.Title.FontUnits = 'normalized';
+    if ia <= 13
+        ax.Title.FontSize = fontsz/100;
+    elseif ia == 25
+        ax.Title.FontSize = fontsz/100; 
     else
-        ax(ia).Title.FontSize = fontsz; 
+        ax.Title.FontSize = fontsz/100; 
     end
-    posG = ax(ia).Position;
-    posT = ax(ia).Title.Extent;
-    if ia <= 11
-        text(posG(1),posT(2),['(' char(96+ia) ')'],'FontSize',fontsz,'VerticalAlignment','bottom','FontWeight','bold')
-    elseif ia<=22
-        text(posG(1),posT(2) - posT(4),['(' char(96+ia-11) ''')'],'FontSize',fontsz,'VerticalAlignment','top','FontWeight','bold')
-    else
-        text(posG(1),posT(2) - posT(4),['(' char(96+ia-22) '")'],'FontSize',fontsz,'VerticalAlignment','top','FontWeight','bold')
+    posG = ax.Position;
+    posT = ax.Title.Extent;
+    if ia <= 6
+        text(posG(1)*0.95,posT(2)*1.05,['(' char(96+ia) ')'],'FontUnits','normalized','FontSize',fontsz/80,'VerticalAlignment','bottom','FontWeight','bold')
+    elseif ia>7 && ia<=12
+        text(posG(1)*0.95,posT(2)*1.05,['(' char(96+ia-1) ')'],'FontUnits','normalized','FontSize',fontsz/80,'VerticalAlignment','bottom','FontWeight','bold')
+    elseif ia>12 && ia<=18
+        text(posG(1)*0.95,posT(2)*1.05,['(' char(96+ia-12) ''')'],'FontUnits','normalized','FontSize',fontsz/80,'VerticalAlignment','bottom','FontWeight','bold')
+    elseif ia>19 && ia<=24
+        text(posG(1)*0.95,posT(2)*1.05,['(' char(96+ia-13) ''')'],'FontUnits','normalized','FontSize',fontsz/80,'VerticalAlignment','bottom','FontWeight','bold')
+    elseif ia>24 && ia<=30
+        text(posG(1)*0.95,posT(2)*1.05,['(' char(96+ia-24) '")'],'FontUnits','normalized','FontSize',fontsz/80,'VerticalAlignment','bottom','FontWeight','bold')
+    elseif ia>31 && ia<=36
+        text(posG(1)*0.95,posT(2)*1.05,['(' char(96+ia-25) '")'],'FontUnits','normalized','FontSize',fontsz/80,'VerticalAlignment','bottom','FontWeight','bold')
     end
-
-    
-%     if ia == 1
-%         ax(ia).YLabel.String = 'enhanced image';
-%     elseif ia == 12
-%         ax(ia).YLabel.String = 'full-width binary';
-%     elseif ia == 23
-%         ax(ia).YLabel.String = 'skeleton';
-%     end
 end
 end
 

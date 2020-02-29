@@ -8,6 +8,7 @@ dir_out_HLD = ['..' filesep 'summary' filesep 'HLD' filesep];
 micron_per_pixel = micron_per_pixel.*DownSample;
 sk_width = 3;
 E_width = 1;
+width_method = 'granulometry';
 %% set up default colour map
 cmap = jet(256);
 cmap(1,:) = 0;
@@ -21,14 +22,19 @@ disp(['Step ' num2str(step) ': Processing ' FolderName])
 %% get the skeleton
 step = step+1;
 disp(['Step ' num2str(step) ': Skeleton extraction using threshold ' num2str(threshold)])
-[bw_cnn, sk, skLoop, skTree] = fnc_skeleton(im_cnn,bw_vein,threshold);
-%% calculate the width from the distance transform of the binarized cnn image
+[bw_cnn, sk, skLoop, skTree] = fnc_skeleton(im_cnn,bw_vein,bw_mask,threshold);
+%% calculate the width 
 step = step+1;
-disp(['Step ' num2str(step) ': Calculating width from distance transform'])
-[im_distance, ~] = bwdist(~bw_cnn,'Euclidean');
-% extract the initial width along the skeleton from the distance transform
-W_pixels = zeros(size(im_distance),'single');
-W_pixels(sk) = single(im_distance(sk).*2);
+disp(['Step ' num2str(step) ': Calculating width'])
+switch width_method
+    case 'distance'
+        [im_width, ~] = bwdist(~bw_cnn,'Euclidean');
+    case 'granulometry'
+        [im_width] = fnc_granulometry(im);
+end
+% extract the initial width along the skeleton
+W_pixels = zeros(size(im_width),'single');
+W_pixels(sk) = single(im_width(sk).*2);
 %% extract network using the thinned skeleton
 step = step+1;
 disp(['Step ' num2str(step) ': Extracting the network'])
@@ -123,12 +129,14 @@ disp(['Step ' num2str(step) ': Hierarchical loop decomposition'])
 save([dir_out_HLD FolderName '_HLD_results.mat'],'G_HLD','parent')
 %% HLD display
 if ShowFigs == 1 && ExportFigs == 0
-    display_HLD(G_polygons,im_cnn,G_HLD,FullLeaf,[dir_out_HLD FolderName '_HLD'],ExportFigs);
-%   display_HLD_figure(G_polygons,im_cnn,G_HLD,FullLeaf,[dir_out_HLD FolderName '_HLD_2'],ExportFigs);
+    display_HLD_v1(G_polygons,im_cnn,G_HLD,FullLeaf,[dir_out_HLD FolderName '_HLD_1'],ExportFigs);
+    display_HLD_v2(G_polygons,im_cnn,G_HLD,FullLeaf,[dir_out_HLD FolderName '_HLD_2'],ExportFigs);
+   display_HLD_figure(G_polygons,im_cnn,G_HLD,FullLeaf,[dir_out_HLD FolderName '_HLD_3'],ExportFigs);
 end
 if ExportFigs == 1
-     display_HLD(G_polygons,im_cnn,G_HLD,FullLeaf,[dir_out_HLD FolderName '_HLD'],ExportFigs);
-%    display_HLD_figure(G_polygons,im_cnn,G_HLD,FullLeaf,[dir_out_HLD FolderName '_HLD_2'],ExportFigs);
+    display_HLD_v1(G_polygons,im_cnn,G_HLD,FullLeaf,[dir_out_HLD FolderName '_HLD_1'],ExportFigs);
+     display_HLD_v2(G_polygons,im_cnn,G_HLD,FullLeaf,[dir_out_HLD FolderName '_HLD_2'],ExportFigs);
+    display_HLD_figure(G_polygons,im_cnn,G_HLD,FullLeaf,[dir_out_HLD FolderName '_HLD_3'],ExportFigs);
 end
 %%
 if ExportFigs == 1
@@ -247,14 +255,14 @@ bw_mask = bw_mask & bw_cnn_mask;
 im_cnn(~bw_mask) = 0;
 end
 
-function [bw_cnn, skfinal, skLoop, skTree] = fnc_skeleton(im_in,bw_vein,threshold)
+function [bw_cnn, skFinal, skLoop, skTree] = fnc_skeleton(im_in,bw_vein,bw_mask,threshold)
 warning off
 if islogical(im_in)
     % the input image is already a binary image
     bw_cnn = im_in;
 else
     % impose local minima to smooth out background noise
-    exmin = imextendedmin(mat2gray(im_in),0.2);
+    exmin = imextendedmin(mat2gray(im_in),0.15);
     im = imimposemin(mat2gray(im_in),exmin);
     % convert to a binary image
     bw_cnn = imbinarize(im,threshold);
@@ -267,6 +275,13 @@ end
 bw_cnn = medfilt2(bw_cnn,[3 3]);
 % keep the connected component
 bw_cnn = bwareafilt(bw_cnn,1);
+if ~isempty(bw_mask)
+    bw_cnn = bw_cnn | ~bw_mask;
+else
+    bw_mask = true(size(bw_cnn));
+end
+% pad the array
+bw_cnn = padarray(bw_cnn,[1 1],1,'both');
 % calculate the distance transform as the input to a watershed segmentation
 D = bwdist(~bw_cnn,'Euclidean');
 W = watershed(D,4);
@@ -338,9 +353,34 @@ if any(skRing(:))
     skLoop(skRing) = 0;
 end
 % add the watershed skeleton back in
-skfinal = skTree | skLoop;
+skFinal = skTree | skLoop;
+% remove the padding
+skFinal = skFinal(2:end-1,2:end-1);
+skLoop = skLoop(2:end-1,2:end-1);
+skTree = skTree(2:end-1,2:end-1);
+bw_cnn = bw_cnn(2:end-1,2:end-1);
+% remove edges touching the mask
+bp = bwmorph(skFinal,'branchpoints');
+sk = skFinal;
+sk(imdilate(bp,ones(3))) = 0;
+B = bwperim(true(size(bw_mask)));
+[r,c] = find(~bw_mask | B);
+touching = bwselect(sk|~bw_mask,c,r);
+skFinal(touching) = 0;
 % keep the largest connected component
-skfinal = bwareafilt(skfinal,1);
+skFinal = bwareafilt(skFinal,1);
+skLoop = skLoop & skFinal;
+skTree = skTree & skFinal;
+end
+
+function [width] = fnc_granulometry(im_cnn)
+s = 0:60;
+imo = zeros([size(im_cnn),length(s)], 'single');
+im = imtophat(imcomplement(im_cnn),strel('disk',61));
+for i=1:length(s)
+    imo(:,:,i) = imopen(mat2gray(im),strel('disk',s(i)));
+end
+width = sum(imo,3);
 end
 
 function [edgelist,edgeim] = fnc_resolve_self_loops(edgelist,edgeim)
@@ -878,7 +918,7 @@ CW_full(bp) = temp(bp);
 if sk_width > 1
     CW_full = imdilate(CW_full, ones(sk_width));
 end
-im_rgb = uint8(255.*ind2rgb(im,gray(256)));
+%im_rgb = uint8(255.*ind2rgb(im,gray(256)));
 sk_rgb = uint8(255.*ind2rgb(uint8(CW_full),cmap));
 coded_FW = imadd(im_rgb,sk_rgb);
 % add the boundaries of the mask
@@ -1343,8 +1383,6 @@ SG_GCC = subgraph(G_polygons,find(CC==GCC));
 % extract the same component from the stats arrays. These arrays contain
 % data for all polygons orginally identified and given a unique number (ID)
 polygon_stats = polygon_stats(SG_GCC.Nodes.ID);
-% set the weights in the vein graph to length
-G_veins.Edges.Weight = G_veins.Edges.Length;
 % Keep veins from the vein graph that form part of the polygon_graph. These
 % will be the boundary edges and any internal tree-like parts of the
 % network, but will exclude edges from incomplete polygons on the boundary
@@ -1367,6 +1405,8 @@ G_veins = subgraph(G_veins,find(CC==GCC));
 % % % %
 % calculate the initial length and MST ratio for the veins
 L = sum(G_veins.Edges.Length);
+% set the weights in the vein graph to length
+G_veins.Edges.Weight = G_veins.Edges.Length;
 MST = minspantree(G_veins,'method','sparse');
 MSTL = sum(MST.Edges.Weight)/L;
 % get the number of nodes and edge in the dual graph
@@ -1388,13 +1428,16 @@ MSTRatio = [repmat(MSTL,nnP,1); zeros(nnP-1,1)];
 % redimension the stat arrays to accomodate all the fused nodes
 areole_stats(nnP.*2-1).Area = 0;
 polygon_stats(nnP.*2-1).Area = 0;
-% order the edges by width in the polygon graph
-[W,idx] = sort(SG_GCC.Edges{:,'Width'});
-% sort the edge nodes and edge name to match the ordered widths
-nodei = SG_GCC.Edges{idx,'EndNodes'}(:,1);
-nodej = SG_GCC.Edges{idx,'EndNodes'}(:,2);
-% set up a list of the initial edges sorted by width
-ET = [nodei nodej W];
+% % order the edges by width in the polygon graph
+% [W,idx] = sort(SG_GCC.Edges{:,'Width'});
+% % sort the edge nodes and edge name to match the ordered widths
+% nodei = SG_GCC.Edges{idx,'EndNodes'}(:,1);
+% nodej = SG_GCC.Edges{idx,'EndNodes'}(:,2);
+% % set up a list of the initial edges sorted by width
+% ET = [nodei nodej W];
+ET = [SG_GCC.Edges.EndNodes(:,1) SG_GCC.Edges.EndNodes(:,2) SG_GCC.Edges{:,'Width'}];
+% sort by width
+ET = sortrows(ET,3,'ascend');
 % start the index for the new node (Nk) to follow on the number of existing
 % nodes (nnP)
 Nk = nnP;
@@ -1529,8 +1572,8 @@ NodeTable = table((1:(2*nnP)-1)', width_threshold.*mm, ...
     'VariableNames',{'node_ID', 'width_threshold', 'node_Area', 'node_Degree', ...
     'degree_Asymmetry',  'subtree_degree_Asymmetry', 'area_Asymmetry',  'subtree_area_Asymmetry', ...
     'node_HS','Perimeter','MajorAxisLength', 'MinorAxisLength', 'Eccentricity','Orientation','Circularity','Elongation','Roughness','VTotLen','VTotVol','MSTRatio','Boundary'});
-idx = NodeTable.node_Area == 0;
-NodeTable(idx,:) = [];
+% idx = NodeTable.node_Area == 0;
+% NodeTable(idx,:) = [];
 EdgeTable = table(EndNodes, ...
     'VariableNames', {'EndNodes'});
 idx = EdgeTable.EndNodes(:,1)==0;
@@ -1562,7 +1605,7 @@ for ia = 1:6
     axes(ax(ia))
     if ~isempty(images{ia})
         imshow(images{ia},[],'Border','tight','InitialMagnification','fit');
-        h = title(titles{ia},'fontsize',12,'fontweight','normal','interpreter','none');
+        h = title(titles{ia},'fontsize',18,'fontweight','normal','interpreter','none');
         h.FontWeight = 'normal';
         axis on
         ax(ia).XTick = [];
@@ -1623,7 +1666,7 @@ end
 delete(hfig);
 end
 
-function hfig = display_HLD(G_polygons,im_cnn,G_HLD,FullLeaf,name,ExportFigs)
+function hfig = display_HLD_v1(G_polygons,im_cnn,G_HLD,FullLeaf,name,ExportFigs)
 %hfig = figure('Renderer','painters');
 hfig = figure; % remote only uses software opengl
 hfig.Units = 'normalized';
@@ -1760,6 +1803,133 @@ end
 delete(hfig);
 end
 
+function hfig = display_HLD_v2(G_polygons,im_cnn,G_HLD,FullLeaf,name,ExportFigs)
+%hfig = figure('Renderer','painters');
+hfig = figure; % remote only uses software opengl
+hfig.Units = 'normalized';
+hfig.Position = [0 0 0.6 1];
+hfig.Color = 'w';
+% display the CNN image to overlay the subgraphs
+ax(1) = subplot(3,3,4);
+axes(ax(1))
+pos = ax(1).OuterPosition;
+ax(1).Position = pos;
+imshow(1-im_cnn,[])
+hold on
+axis off
+box on
+% display the complete treeplot
+subplot(3,3,[1,3])
+h = plot(G_HLD,'Layout','layered','Direction','down','sources',numnodes(G_HLD), ...
+    'AssignLayers','alap','NodeColor','k','Marker','.','EdgeColor','k','LineWidth',1);
+% recolor any nodes connected to the boundary in grey
+SP = shortestpathtree(G_HLD,numnodes(G_HLD),G_HLD.Nodes.node_ID(find(G_HLD.Nodes.Boundary)));
+highlight(h,SP,'NodeColor',[0.5 0.5 0.5],'EdgeColor',[0.5 0.5 0.5],'Marker','*','LineWidth',1)
+ylabel('node level');
+xlabel('terminal node');
+axis tight
+axis on
+xlim([0 numnodes(G_polygons)])
+y = ylim;
+ylim([0 y(2)])
+box on
+% display the tree width histogram
+subplot(3,3,5)
+nbins = 50;
+vv = G_HLD.Nodes.width_threshold;
+ww = G_HLD.Nodes.node_Area;
+% get automatic bin limits using the histogram function
+[~,edges] = histcounts(vv,nbins);
+% calculate a weighted histogram
+[histw, ~] = histwv(vv, ww, min(edges), max(edges), nbins);
+% plot the histogram against the bin centers
+center = edges(2:end)-diff(edges(1:2))./2;
+bar(center(2:end),histw(2:end),'FaceColor',[0.5 0.5 0.5])
+xlabel('width of edge removed')
+ylabel('area weighted freq.')
+box on
+% if FullLeaf == 1
+    last = 1;
+    g1 = G_HLD;
+% else
+%     % extract the subgraph for nodes that are not linked to a boundary node
+%     g1 = subgraph(G_HLD,find(~G_HLD.Nodes.Boundary));
+%     % extract the largest five fully connected subgraphs
+%     last = 5;
+% end
+% order by the largest connected subtree
+cc = conncomp(g1,'OutputForm','cell');
+l = cellfun(@(x) length(x),cc);
+[~,idx] = sort(l,'descend');
+% set up plot options
+cols = repmat({'r','g','b','c','m','y'},1,50);
+width_limits = ([round(min(log(g1.Nodes.width_threshold(g1.Nodes.width_threshold>0)))-0.1,1) round(max(log(g1.Nodes.width_threshold))+0.1,1)]);
+area_limits = ([floor(min(log(g1.Nodes.node_Area))-0.25) ceil(max(log(g1.Nodes.node_Area))+0.25)]);
+for icc = 1:last
+    % extract the HLD subgraph
+    g2 = subgraph(g1,cc{idx(icc)});
+    % recolor the nodes and edges
+    %highlight(h,g2.Nodes.node_ID(g2.Edges.EndNodes(:,1)),g2.Nodes.node_ID(g2.Edges.EndNodes(:,2)),'NodeColor',cols{icc},'Marker','o','EdgeColor',cols{icc},'LineWidth',1)
+    % get the node-IDs for the subtree to overlay on the image
+    Gidx = g1.Nodes.node_ID(cc{idx(icc)});
+    % limit the nodes to display to the initial nodes
+    Gidx(Gidx>numnodes(G_polygons)) = [];
+    % extract the subgraph from the original dual-graph that contain the selected nodes
+    g3 = subgraph(G_polygons,Gidx);
+    % display the subgraph on the image
+    plot(ax(1),g3, 'XData',g3.Nodes.node_X_pix,'YData',g3.Nodes.node_Y_pix, ...
+        'NodeColor','g','MarkerSize',1,'Marker', 'none', 'NodeLabel', [], ...
+        'EdgeColor','g','EdgeAlpha',1,'EdgeLabel', [],'LineWidth',1);
+
+    ax(6) = subplot(3,3,6);
+     plot(ax(6),log(g2.Nodes.width_threshold), movmedian(log(g2.Nodes.VTotLen),15),'LineStyle','-','Marker','.','Color','k')
+    hold on
+    xlim(width_limits)
+    xlabel('log(width)')
+    ylabel('Vein density')
+    box on
+    
+    % plot the area
+    ax(7) = subplot(3,3,7);
+    plot(ax(7),log(g2.Nodes.width_threshold), movmedian(log(g2.Nodes.node_Area),15),'LineStyle','-','Marker','.','Color','k')
+    xlabel('log(width)')
+    ylabel('log(area)')
+    xlim(width_limits)
+    %ylim([-6 0])
+    hold on
+    box on
+    
+    % plot the MSTRatio
+    ax(8) = subplot(3,3,8);
+    plot(ax(8),log(g2.Nodes.width_threshold), movmedian(g2.Nodes.MSTRatio,15),'LineStyle','-','Marker','.','Color','k')
+    xlabel('log(width)')
+    ylabel('MST ratio')
+    xlim(width_limits)
+    ylim([0.5 1])
+    hold on
+    box on
+    
+    % plot the Circularity
+    ax(9) = subplot(3,3,9);
+    plot(ax(9),log(g2.Nodes.width_threshold), movmedian(g2.Nodes.Circularity,15),'LineStyle','-','Marker','.','Color','k')
+    xlabel('log(width)')
+    ylabel('circularity')
+    xlim(width_limits)
+    ylim([0.2 1])
+    hold on
+    box on
+    
+end
+drawnow
+if ExportFigs
+    warning('off','MATLAB:prnRenderer:opengl');
+    %export_fig(name,'-png','-pdf','-r300','-painters',hfig)
+    export_fig(name,'-png','-pdf','-r300',hfig)
+    %     saveas(hfig,name)
+end
+delete(hfig);
+end
+
 function hfig = display_HLD_figure(G_polygons,im_cnn,G_HLD,FullLeaf,name,ExportFigs)
 %hfig = figure('Renderer','painters');
 hfig = figure; % remote only uses software opengl
@@ -1831,9 +2001,10 @@ drawnow
 if ExportFigs
     warning('off','MATLAB:prnRenderer:opengl');
     %export_fig(name,'-png','-r600','-painters',hfig)
-    export_fig(name,'-png','-r600',hfig)
+    export_fig(name,'-png','-pdf','-r300',hfig)
     %     saveas(hfig,name)
 end
+delete(hfig);
 end
 
 function [histw, histv] = histwv(v, w, min, max, bins)
