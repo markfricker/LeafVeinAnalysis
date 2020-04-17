@@ -1,4 +1,4 @@
-function [results, PR_methods] = MDFLeafVeinAnalysis_PR_v2(FolderName,micron_per_pixel,DownSample,ShowFigs,ExportFigs)
+%function [results, PR_methods] = MDFLeafVeinAnalysis_PR_v2(FolderName,micron_per_pixel,DownSample,ShowFigs,ExportFigs)
 %% set up directories
 dir_out_PR_results = ['..' filesep 'summary' filesep 'PR' filesep 'results' filesep];
 dir_out_PR_images = ['..' filesep 'summary' filesep 'PR' filesep 'images' filesep];
@@ -228,7 +228,7 @@ sheets = setdiff(fieldnames(results),{'File';'TimeStamp';'MicronPerPixel';'DownS
 for iS = 1:numel(sheets)
     writetable(results.(sheets{iS}),[dir_out_PR_results [FolderName '_results.xlsx']],'FileType','Spreadsheet','Sheet',sheets{iS},'WriteVariableNames',true,'WriteRowNames',true)
 end
-end
+%end
 %% all functions
 function [im,im_cnn,bw_mask,bw_vein,bw_roi,bw_GT] = fnc_load_CNN_images(FolderName,DownSample)
 % get the contents of the directory
@@ -937,9 +937,9 @@ for iP = 1:10
     imshow(imrotate(PR_methods.images_fw.(method)(:,:,:,PR_methods.evaluation_fw{method,[mode '_idx']}),rotate_angle),[])
     switch mode
         case 'F1'
-            title(['${F}_1 = ' num2str(PR_methods.evaluation_fw{method,'F1'},2) '$'], 'Color',cols(iP,:),'Interpreter','latex')
+            title(['\qquad$${F}_1$=' num2str(PR_methods.evaluation_fw{method,'F1'},2) ', $T$=' num2str(PR_methods.evaluation_fw{method,'F1_threshold'},2)], 'Color','k','Interpreter','latex')
         case 'FBeta2'
-            title(['${F}_{\beta2} = ' num2str(PR_methods.evaluation_fw{method,'FBeta2'},2) '$'], 'Color',cols(iP,:),'Interpreter','latex')
+            title(['\qquad$${F}_{\beta2}$=' num2str(PR_methods.evaluation_fw{method,'FBeta2'},2), ', $T$=' num2str(PR_methods.evaluation_fw{method,'FBeta2_threshold'},2)], 'Color','k','Interpreter','latex')
     end
     axis off
 end
@@ -962,9 +962,9 @@ for iP = 1:10
     imshow(imerode(imrotate(PR_methods.images_sk.(method)(:,:,:,PR_methods.evaluation_sk{method,[mode '_idx']}),rotate_angle),ones(width)),[])
     switch mode
         case 'F1'
-            title(['${F}_1 = ' num2str(PR_methods.evaluation_sk{method,'F1'},2) '$'], 'Color',cols(iP,:),'Interpreter','latex')
+            title(['\qquad${F}_1$=' num2str(PR_methods.evaluation_sk{method,'F1'},2) ', $T$=' num2str(PR_methods.evaluation_sk{method,'F1_threshold'},2)], 'Color','k','Interpreter','latex')
         case 'FBeta2'
-            title(['${F}_{\beta2} = ' num2str(PR_methods.evaluation_sk{method,'FBeta2'},2) '$'], 'Color',cols(iP,:),'Interpreter','latex')
+            title(['\qquad$${F}_{\beta2}$=' num2str(PR_methods.evaluation_sk{method,'FBeta2'},2) ', $T$=' num2str(PR_methods.evaluation_sk{method,'FBeta2_threshold'},2)], 'Color','k','Interpreter','latex')
     end
     axis off
 end
@@ -977,12 +977,13 @@ for ia = 1:36
     box on
     ax.Title.FontWeight = 'normal';
     ax.Title.FontUnits = 'normalized';
+    ax.Title.HorizontalAlignment = 'center';
     if ia <= 13
         ax.Title.FontSize = fontsz/100;
     elseif ia == 25
-        ax.Title.FontSize = fontsz/100; 
+        ax.Title.FontSize = fontsz/100;
     else
-        ax.Title.FontSize = fontsz/100; 
+        ax.Title.FontSize = fontsz/120;
     end
     posG = ax.Position;
     posT = ax.Title.Extent;
