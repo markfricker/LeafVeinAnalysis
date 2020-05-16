@@ -1,4 +1,4 @@
-function results = MDFLeafVeinAnalysis_v8(FolderName,micron_per_pixel,DownSample,threshold,ShowFigs,ExportFigs,FullLeaf,FullMetrics)
+% function results = MDFLeafVeinAnalysis_v8(FolderName,micron_per_pixel,DownSample,threshold,ShowFigs,ExportFigs,FullLeaf,FullMetrics)
 %% set up directories
 dir_out_images = ['..' filesep 'summary' filesep 'images' filesep];
 dir_out_width = ['..' filesep 'summary' filesep 'width' filesep];
@@ -174,7 +174,7 @@ writetable(G_HLD.Nodes,[dir_out_data FolderName '_results.xlsx'],'FileType','spr
 % dir_in = pwd;
 % %xls_delete_sheets([dir_in filesep FolderName '_results.xlsx'],{'Sheet1','Sheet2','Sheet3'})
 % cd(dir_current);
-end
+% end
 
 function [im,im_cnn,bw_mask,bw_vein,bw_roi,bw_GT] = fnc_load_CNN_images(FolderName,DownSample)
 % get the contents of the directory
@@ -723,17 +723,22 @@ CW_cv = CW_std./CW_mean;
 % re-ordering in the graph.
 [midy, midx] = ind2sub([nY,nX],G_veins.Edges.M_pix);
 mid = mat2cell([midy midx],ones(length(midx),1),2)';
-% i-mid for y, mid-i for x for ij and j-mid for y, mid-i for x for ji
-% flip image axis so positive is counterclockwise from
-% horizontal
-CO_ij = cellfun(@(x,y) atan2(x(1,1)-y(1,1), y(1,2)-x(1,2)),edgelist_center,mid,'UniformOutput',1);
-CO_ji = cellfun(@(x,y) atan2(x(end,1)-y(1,1), y(1,2)-x(end,2)),edgelist_center,mid,'UniformOutput',1);
+% % % % i-mid for y, mid-i for x for ij and j-mid for y, mid-i for x for ji
+% % % % flip image axis so positive is counterclockwise from
+% % % % horizontal
+% % % CO_ij = cellfun(@(x,y) atan2(x(1,1)-y(1,1), y(1,2)-x(1,2)),edgelist_center,mid,'UniformOutput',1);
+% % % CO_ji = cellfun(@(x,y) atan2(x(end,1)-y(1,1), y(1,2)-x(end,2)),edgelist_center,mid,'UniformOutput',1);
+% edgelist and mid co-ordinates are in [r,c] format i.e. [y,x]
+% mid - i for ij and mid - j for ji
+% flip y-axis so positive is counterclockwise from horizontal
+CO_ij = cellfun(@(m,i) atan2(-(m(1,1)-i(1,1)), m(1,2)-i(1,2)),mid,edgelist,'UniformOutput',1);
+CO_ji = cellfun(@(m,j) atan2(-(m(1,1)-j(end,1)), m(1,2)-j(end,2)),mid,edgelist,'UniformOutput',1);
 % update the edgetable
 G_veins.Edges.Length = CL_sum';
 G_veins.Edges.Width = CW_mean';
 G_veins.Edges.Width_cv = CW_cv';
-G_veins.Edges.Or_ij = CO_ij';
-G_veins.Edges.Or_ji = CO_ji';
+G_veins.Edges.Or_ij = rad2deg(CO_ij');
+G_veins.Edges.Or_ji = rad2deg(CO_ji');
 % calculate the tortuosity as the ratio of the distance between the end
 % points (chord length) and the total length
 CL_chord = cellfun(@(x) hypot(x(1,1)-x(end,1),x(1,2)-x(end,2)),edgelist_center);
@@ -762,11 +767,9 @@ A = A + A.' - diag(diag(A));
 G_veins.Nodes.node_Strength = full(sum(A,2));
 % calculate a weighted adjacency matrix for orientation for
 % edges ij
-O = sparse(i,j,double(G_veins.Edges.Or_ij),nN,nN);
-% swap the order of the nodes and subtract pi to get the
-% orientation of edges ji
+Oij = sparse(i,j,double(G_veins.Edges.Or_ij),nN,nN);
 Oji = sparse(j,i,double(G_veins.Edges.Or_ji),nN,nN);
-O = O + Oji - diag(diag(O));
+O = Oij + Oji - diag(diag(Oij));
 % Calculate the initial max edge width incident at the node (initially
 % in double precision)
 [edge_Maj, max_idx] = max(A,[],2);
@@ -814,9 +817,12 @@ G_veins.Nodes.node_Min_Maj = G_veins.Nodes.node_Min./G_veins.Nodes.node_Maj;
 G_veins.Nodes.node_Mid_Maj = G_veins.Nodes.node_Mid./G_veins.Nodes.node_Maj;
 G_veins.Nodes.node_Min_Mid = G_veins.Nodes.node_Min./G_veins.Nodes.node_Mid;
 % calculate the absolute angles around the branch
-G_veins.Nodes.node_Omin_Omaj = pi - abs(pi - abs(G_veins.Nodes.node_Omin-G_veins.Nodes.node_Omaj));
-G_veins.Nodes.node_Omid_Omaj = pi - abs(pi - abs(G_veins.Nodes.node_Omid-G_veins.Nodes.node_Omaj));
-G_veins.Nodes.node_Omin_Omid = pi - abs(pi - abs(G_veins.Nodes.node_Omin-G_veins.Nodes.node_Omid));
+% G_veins.Nodes.node_Omin_Omaj = pi - abs(pi - abs(G_veins.Nodes.node_Omin-G_veins.Nodes.node_Omaj));
+% G_veins.Nodes.node_Omid_Omaj = pi - abs(pi - abs(G_veins.Nodes.node_Omid-G_veins.Nodes.node_Omaj));
+% G_veins.Nodes.node_Omin_Omid = pi - abs(pi - abs(G_veins.Nodes.node_Omin-G_veins.Nodes.node_Omid));
+G_veins.Nodes.node_Omin_Omaj = 180 - abs(180 - abs(G_veins.Nodes.node_Omin-G_veins.Nodes.node_Omaj));
+G_veins.Nodes.node_Omid_Omaj = 180 - abs(180 - abs(G_veins.Nodes.node_Omid-G_veins.Nodes.node_Omaj));
+G_veins.Nodes.node_Omin_Omid = 180 - abs(180 - abs(G_veins.Nodes.node_Omin-G_veins.Nodes.node_Omid));
 end
 
 function [gray_CW,width,coded_CW,coded_FW] = fnc_coded_skeleton(im,sk,bw_mask,G_veins,edgelist,edgelist_center,sk_width,cmap)
@@ -1308,13 +1314,13 @@ switch transform
     case 'circ'
         % use circular stats
         warning off
-        T.([prefix 'av' suffix]) = circ_rad2ang(circ_mean(metric));
+        T.([prefix 'av' suffix]) = circ_rad2ang(circ_mean(deg2rad(metric)));
         %         don't calculate the median as the intermediate array size is Ne x NE
-        %         T.([prefix 'md' suffix]) = circ_rad2ang(circ_median(metric)); %
-        %         T.([prefix 'mn' suffix]) = circ_rad2ang(min(metric));
-        %         T.([prefix 'mx' suffix]) = circ_rad2ang(max(metric));
-        T.([prefix 'sd' suffix]) = circ_rad2ang(circ_std(metric));
-        %         T.([prefix 'sk' suffix]) = circ_skewness(metric);
+        %         T.([prefix 'md' suffix]) = circ_rad2ang(circ_median(deg2rad(metric))); %
+        %         T.([prefix 'mn' suffix]) = circ_rad2ang(min(deg2rad(metric)));
+        %         T.([prefix 'mx' suffix]) = circ_rad2ang(max(deg2rad(metric)));
+        T.([prefix 'sd' suffix]) = circ_rad2ang(circ_std(deg2rad(metric)));
+        %         T.([prefix 'sk' suffix]) = circ_skewness(deg2rad(metric)));
         warning on
     otherwise
         T.([prefix 'av' suffix]) = mean(metric).*units;
