@@ -83,7 +83,7 @@ for iF = start:numel(FolderNames)
             threshold = 0.379;
         end
         % run the analysis
-        results = MDFLeafVeinAnalysis_v8(FolderNames{iF},micron_per_pixel,DownSample,threshold,ShowFigs,ExportFigs,FullLeaf,FullMetrics);
+        results = MDFLeafVeinAnalysis_v9(FolderNames{iF},micron_per_pixel,DownSample,threshold,ShowFigs,ExportFigs,FullLeaf,FullMetrics);
     catch ME
         ME
         disp(['ERROR: Could not process folder ' FolderNames{iF}])
