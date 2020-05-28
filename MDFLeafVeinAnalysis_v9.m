@@ -1,4 +1,4 @@
-% function results = MDFLeafVeinAnalysis_v8(FolderName,micron_per_pixel,DownSample,threshold,ShowFigs,ExportFigs,FullLeaf,FullMetrics)
+function results = MDFLeafVeinAnalysis_v9(FolderName,micron_per_pixel,DownSample,threshold,ShowFigs,ExportFigs,FullLeaf,FullMetrics)
 %% set up directories
 dir_out_images = ['..' filesep 'summary' filesep 'images' filesep];
 dir_out_width = ['..' filesep 'summary' filesep 'width' filesep];
@@ -88,8 +88,8 @@ im_areoles_rgb = fnc_polygon_image(areole_stats, sk_polygon, total_area_mask);
 %% convert to an areole graph and a polygon graph
 step = step+1;
 disp(['Step ' num2str(step) ': Dual graph'])
-[G_polygons,polygon_LM2] = fnc_area_graph(G_veins,polygon_stats,polygon_LM);
-[G_areoles,~] = fnc_area_graph(G_veins,areole_stats,polygon_LM);
+[G_polygons,polygon_LM2] = fnc_area_graph(G_veins,polygon_stats,polygon_LM,'polygons');
+[G_areoles,~] = fnc_area_graph(G_veins,areole_stats,polygon_LM,'areoles');
 %% collect summary statistics into a results array
 step = step+1;
 disp(['Step ' num2str(step) ': Summary statistics'])
@@ -139,22 +139,22 @@ if ExportFigs == 1
     display_HLD_figure(G_polygons,im_cnn,G_HLD,FullLeaf,[dir_out_HLD FolderName '_HLD_3'],ExportFigs);
 end
 %%
-if ExportFigs == 1
-    step = step+1;
-    disp(['Step ' num2str(step) ': Saving HLD image'])
-    [nY,nX,~] = size(HLD_image);
-    % save the color-coded width images
-    fout = [dir_out_images FolderName '_HLD_level.png'];
-    mx = double(max(HLD_image(:)));
-    cmap = jet(mx+1);
-    cmap(1,:) = 0;
-    %HLD_image = colfilt(HLD_image,[3 3],'sliding',@max);
-    HLD_image(bw_polygons) = 0;
-    hfig = figure;
-    imshow(ind2rgb(HLD_image,cmap))
-    imwrite(ind2rgb(HLD_image,cmap),fout,'png','Xresolution',nX,'Yresolution',nY)
-    delete(hfig)
-end
+% % % if ExportFigs == 1
+% % %     step = step+1;
+% % %     disp(['Step ' num2str(step) ': Saving HLD image'])
+% % %     [nY,nX,~] = size(HLD_image);
+% % %     % save the color-coded width images
+% % %     fout = [dir_out_images FolderName '_HLD_level.png'];
+% % %     mx = double(max(HLD_image(:)));
+% % %     cmap = jet(mx+1);
+% % %     cmap(1,:) = 0;
+% % %     %HLD_image = colfilt(HLD_image,[3 3],'sliding',@max);
+% % %     HLD_image(bw_polygons) = 0;
+% % %     hfig = figure;
+% % %     imshow(ind2rgb(HLD_image,cmap))
+% % %     imwrite(ind2rgb(HLD_image,cmap),fout,'png','Xresolution',nX,'Yresolution',nY)
+% % %     delete(hfig)
+% % % end
 %% save results to Excel
 step = step+1;
 disp(['Step ' num2str(step) ': saving results to Excel'])
@@ -174,7 +174,7 @@ writetable(G_HLD.Nodes,[dir_out_data FolderName '_results.xlsx'],'FileType','spr
 % dir_in = pwd;
 % %xls_delete_sheets([dir_in filesep FolderName '_results.xlsx'],{'Sheet1','Sheet2','Sheet3'})
 % cd(dir_current);
-% end
+end
 
 function [im,im_cnn,bw_mask,bw_vein,bw_roi,bw_GT] = fnc_load_CNN_images(FolderName,DownSample)
 % get the contents of the directory
@@ -612,6 +612,7 @@ A = A + A.' - diag(diag(A));
 % (initially in double precision inherited from the sparse matrix
 [edge_D0, max_idx] = max(A,[],2); % column format to match the table later
 edge_D0 = full(edge_D0);
+G_veins.Nodes.node_D0 = edge_D0;
 % Calculate the width of the penultimate edge width by removing the max and
 % recalculating the max for the remainder
 rows = (1:size(A,1))';
@@ -625,7 +626,7 @@ G_veins.Nodes.node_D1 = full(max(AD1,[],2));
 B = -A + sparse(nnzr,nnzc,max(edge_D0),size(A,1),size(A,2));
 mn = max(B,[],2);
 G_veins.Nodes.node_D2 = -(mn-max(edge_D0));
-G_veins.Nodes.node_D0 = edge_D0;
+
 % get the degree for nodei and nodej
 NDegI = G_veins.Nodes{G_veins.Edges.EndNodes(:,1),'node_Degree'};
 NDegJ = G_veins.Nodes{G_veins.Edges.EndNodes(:,2),'node_Degree'};
@@ -765,6 +766,7 @@ rows = (1:size(A,1))';
 A = sparse(i,j,double(G_veins.Edges.Width),nN,nN);
 A = A + A.' - diag(diag(A));
 G_veins.Nodes.node_Strength = full(sum(A,2));
+G_veins.Nodes.node_Average = G_veins.Nodes.node_Strength./G_veins.Nodes.node_Degree;
 % calculate a weighted adjacency matrix for orientation for
 % edges ij
 Oij = sparse(i,j,double(G_veins.Edges.Or_ij),nN,nN);
@@ -774,6 +776,7 @@ O = Oij + Oji - diag(diag(Oij));
 % in double precision)
 [edge_D0, max_idx] = max(A,[],2);
 edge_D0 = full(edge_D0);
+G_veins.Nodes.node_D0 = edge_D0; 
 mx_idx = sub2ind(size(A),rows,max_idx);
 % get the orientation of the largest edge from the orientation adjacency
 % matrix using the max_idx index
@@ -787,12 +790,7 @@ MaxA = MaxA + MaxA.' - diag(diag(MaxA));
 B = -A + MaxA;
 [edge_D2, D2_idx] = max(B,[],2);
 mn_idx = sub2ind(size(A),rows,D2_idx);
-% convert back to absolute positive value by negating and adding back the max
-G_veins.Nodes.node_D2 = -full(edge_D2)+max(edge_D0); 
-% get the orentation of the weakest edge from the orientation adjacency
-% matric and the D2_idx
-G_veins.Nodes.node_OD2 = full(O(mn_idx));
-%G_veins.Nodes.node_OD2(abs(G_veins.Nodes.node_OD2)>180) = mod(G_veins.Nodes.node_OD2(abs(G_veins.Nodes.node_OD2)>180),180);
+
 % Calculate the width of the penultimate edge width by removing the max
 % values from the adjacency matrix and recalculating max for the remainder
 AD1 = A;
@@ -803,25 +801,32 @@ G_veins.Nodes.node_D1 = full(edge_D1);
 % get the orientation of the penultimate edge from the orientation
 % adjacency matrix using the pn_idx
 G_veins.Nodes.node_OD1 = full(O(pn_idx));
-G_veins.Nodes.node_D0 = edge_D0; 
-G_veins.Nodes.node_Average = G_veins.Nodes.node_Strength./G_veins.Nodes.node_Degree;
+
+% now add the D2 results to the table - convert back to absolute positive value by negating and adding back the max
+G_veins.Nodes.node_D2 = -full(edge_D2)+max(edge_D0); 
+% get the orientation of the weakest edge from the orientation adjacency
+% matric and the D2_idx
+G_veins.Nodes.node_OD2 = full(O(mn_idx));% convert back to absolute positive value by negating and adding back the max
+
 % tidy up results for k=1 nodes
 idx = G_veins.Nodes.node_Degree == 1;
 G_veins.Nodes.node_D1(idx) = nan;
 G_veins.Nodes.node_D2(idx) = nan;
 G_veins.Nodes.node_OD1(idx) = nan;
 G_veins.Nodes.node_OD2(idx) = nan;
-% calculate the ratios for the radii of smallest to largest and
-% intermediate to largest
-G_veins.Nodes.node_D2_D0 = G_veins.Nodes.node_D2./G_veins.Nodes.node_D0;
-G_veins.Nodes.node_D1_D0 = G_veins.Nodes.node_D1./G_veins.Nodes.node_D0;
-G_veins.Nodes.node_D2_D1 = G_veins.Nodes.node_D2./G_veins.Nodes.node_D1;
+% % % % calculate the ratios for the radii of smallest to largest and
+% % % % intermediate to largest
+% % % G_veins.Nodes.node_D1_D0 = G_veins.Nodes.node_D1./G_veins.Nodes.node_D0;
+% % % G_veins.Nodes.node_D2_D0 = G_veins.Nodes.node_D2./G_veins.Nodes.node_D0;
+% % % G_veins.Nodes.node_D2_D1 = G_veins.Nodes.node_D2./G_veins.Nodes.node_D1;
+G_veins.Nodes.node_AreaRatio = (G_veins.Nodes.node_D2+G_veins.Nodes.node_D1)./G_veins.Nodes.node_D0;
+G_veins.Nodes.node_Symmetry = G_veins.Nodes.node_D2./G_veins.Nodes.node_D1;
 % calculate the absolute angles around the branch
 % G_veins.Nodes.node_OD2_OD0 = pi - abs(pi - abs(G_veins.Nodes.node_OD2-G_veins.Nodes.node_OD0));
 % G_veins.Nodes.node_OD1_OD0 = pi - abs(pi - abs(G_veins.Nodes.node_OD1-G_veins.Nodes.node_OD0));
 % G_veins.Nodes.node_OD2_OD1 = pi - abs(pi - abs(G_veins.Nodes.node_OD2-G_veins.Nodes.node_OD1));
-G_veins.Nodes.theta_D2_D0 = 180 - abs(180 - abs(G_veins.Nodes.node_OD2-G_veins.Nodes.node_OD0));
 G_veins.Nodes.theta_D1_D0 = 180 - abs(180 - abs(G_veins.Nodes.node_OD1-G_veins.Nodes.node_OD0));
+G_veins.Nodes.theta_D2_D0 = 180 - abs(180 - abs(G_veins.Nodes.node_OD2-G_veins.Nodes.node_OD0));
 G_veins.Nodes.theta_D2_D1 = 180 - abs(180 - abs(G_veins.Nodes.node_OD2-G_veins.Nodes.node_OD1));
 end
 
@@ -1067,7 +1072,7 @@ Roughness = num2cell(([polygon_stats.Perimeter].^2)./[polygon_stats.Area]);
 [polygon_stats(:).Circularity] = deal(Circularity{:});
 [polygon_stats(:).Elongation] = deal(Elongation{:});
 [polygon_stats(:).Roughness] = deal(Roughness{:});
-[polygon_stats(:).ID] = deal(ID{:});
+[polygon_stats(:).polygon_ID] = deal(ID{:});
 % modify the label matrix to only include the areoles, but with the same ID
 % as the polygons
 areole_LM = polygon_LM;
@@ -1125,10 +1130,10 @@ Roughness = num2cell(([areole_stats.Perimeter].^2)./[areole_stats.Area]);
 [areole_stats(:).Circularity] = deal(Circularity{:});
 [areole_stats(:).Elongation] = deal(Elongation{:});
 [areole_stats(:).Roughness] = deal(Roughness{:});
-[areole_stats(:).ID] = deal(ID{:});
+[areole_stats(:).areole_ID] = deal(ID{:});
 end
 
-function [G_areas,LM] = fnc_area_graph(G_veins,area_stats,LM)
+function [G_areas,LM] = fnc_area_graph(G_veins,area_stats,LM,type)
 % Construct a NodeTable with the node for each area, along with the
 % corresponding metrics
 % extract the centroid values
@@ -1140,6 +1145,8 @@ NodeTable = struct2table(stats);
 % add the centroid positions back in as separate columns in the table
 NodeTable.node_X_pix = polygon_Centroid(:,1);
 NodeTable.node_Y_pix = polygon_Centroid(:,2);
+% reorder the table to get the ID and co-ordinates first
+NodeTable = NodeTable(:,[end-2:end, 1:end-3]);
 % Construct an EdgeTable with the width of the pixel skeleton edge that it
 % crosses
 names = {'EndNodes' 'Width' 'Name'};
@@ -1173,7 +1180,13 @@ CC = conncomp(G_areas);
 [N,~] = histcounts(CC,max(CC));
 [~,GCC] = max(N);
 % only keep the connected areas in the label matrix
-LM(~ismember(LM,G_areas.Nodes.ID(CC==GCC))) = 0;
+switch type
+    case 'areoles'
+        LM(~ismember(LM,G_areas.Nodes.areole_ID(CC==GCC))) = 0;
+    case 'polygons'
+        LM(~ismember(LM,G_areas.Nodes.polygon_ID(CC==GCC))) = 0;
+end
+% LM(~ismember(LM,G_areas.Nodes.ID(CC==GCC))) = 0;
 G_areas = rmnode(G_areas,find(CC~=GCC));
 end
 
@@ -1368,7 +1381,7 @@ Bidx(Bidx==0) = [];
 % % % imshow(single(cat(3,B_polygons,bw_polygons,Bim)))
 % % % %
 % add in a boundary flag if the node is a boundary polygon
-G_polygons.Nodes.Boundary = ismember(G_polygons.Nodes.ID,Bidx);
+G_polygons.Nodes.Boundary = ismember(G_polygons.Nodes.polygon_ID,Bidx);
 % select the largest component of the sub-graph
 % % % [CC, binsizes] = conncomp(G_polygons);
 % % % [~,GCC] = max(binsizes);
@@ -1388,14 +1401,14 @@ SG_GCC = subgraph(G_polygons,find(CC==GCC));
 %
 % extract the same component from the stats arrays. These arrays contain
 % data for all polygons orginally identified and given a unique number (ID)
-polygon_stats = polygon_stats(SG_GCC.Nodes.ID);
+polygon_stats = polygon_stats(SG_GCC.Nodes.polygon_ID);
 % Keep veins from the vein graph that form part of the polygon_graph. These
 % will be the boundary edges and any internal tree-like parts of the
 % network, but will exclude edges from incomplete polygons on the boundary
 % or disconnected polygons. Edges should have Ai and/or
 % Aj corresponding to a polygon node ID.
 %Vidx = ismember(G_veins.Edges.Ai,idx) | ismember(G_veins.Edges.Aj,idx);
-Vidx = ismember(G_veins.Edges.Ai,SG_GCC.Nodes.ID) | ismember(G_veins.Edges.Aj,SG_GCC.Nodes.ID);
+Vidx = ismember(G_veins.Edges.Ai,SG_GCC.Nodes.polygon_ID) | ismember(G_veins.Edges.Aj,SG_GCC.Nodes.polygon_ID);
 G_veins = rmedge(G_veins,find(~Vidx));
 % only keep veins that are still connected to the largest component
 % % % [CC, binsizes] = conncomp(G_veins);

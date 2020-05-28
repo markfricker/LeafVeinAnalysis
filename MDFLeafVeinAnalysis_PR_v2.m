@@ -372,7 +372,8 @@ switch method
         for iL = 1:3;%nLevels
             % Parameters setting
             sigmas = [1:1:3];
-            spacing = .7; whiteondark = true;
+            spacing = 1; 
+            whiteondark = true;
             %tau = 0.03; tau2 = 0.5; D = 0.01; default
             tau = 0.2; tau2 = 0.5; D = 0.01;
             % Proposed Method (Eigenvalue based version)
@@ -383,7 +384,8 @@ switch method
         for iL = 1:3;%nLevels
             % Parameters setting
             sigmas = [1:1:3];
-            spacing = .7; whiteondark = true;
+            spacing = 1; 
+            whiteondark = true;
             %tau = 0.05; tau2 = 0.25; D = 0.45; % default
             tau = 0.05; tau2 = 0.5; D = 0.01;
             % Proposed Method (probability based version)
