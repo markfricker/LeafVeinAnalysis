@@ -8,8 +8,8 @@ ExportFigs = 1;
 FullMetrics = 1;
 FullLeaf = 0;
 %% set up parameters
-micron_per_pixel = 1.6807;
-DownSample = 2;
+MicronPerPixel = 1.6807;
+DownSample = 1;
 %% set up starting directory on the remote server
 if remote == 1
     addpath('/soge-home/projects/leaf-gpu/Matlab working')
@@ -71,7 +71,8 @@ end
 %% set the start folder
 %start = find(contains(FolderNames,'insert filename'));
 start = 1;
-for iF = start:numel(FolderNames)
+for iF = 1:start:numel(FolderNames)
+    tic
     try
         % change the working directory
         cd(FolderNames{iF});
@@ -83,7 +84,7 @@ for iF = start:numel(FolderNames)
             threshold = 0.379;
         end
         % run the analysis
-        results = MDFLeafVeinAnalysis_v9(FolderNames{iF},micron_per_pixel,DownSample,threshold,ShowFigs,ExportFigs,FullLeaf,FullMetrics);
+        results = MDFLeafVeinAnalysis_v10(FolderNames{iF},MicronPerPixel,DownSample,threshold,ShowFigs,ExportFigs,FullLeaf,FullMetrics);
     catch ME
         ME
         disp(['ERROR: Could not process folder ' FolderNames{iF}])
@@ -111,6 +112,7 @@ for iF = start:numel(FolderNames)
         % reset the working directory
         cd(dir_in);
     end
+    toc
 end
 warning on
 

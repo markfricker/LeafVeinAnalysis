@@ -8,14 +8,15 @@ dir_out_HLD = ['..' filesep 'summary' filesep 'HLD' filesep];
 micron_per_pixel = micron_per_pixel.*DownSample;
 sk_width = 3;
 E_width = 1;
-width_method = 'granulometry';
 %% set up default colour map
 cmap = jet(256);
 cmap(1,:) = 0;
 %% load in the image files
 step = 0;
 warning off
-% Load in the images
+% Load in the images and downsample them. Note all results in pixels are
+% for the downsampled images. The summary results are calibrated in mm
+% taking this into account.
 step = step+1;
 disp(['Step ' num2str(step) ': Processing ' FolderName])
 [im,im_cnn,bw_mask,bw_vein,bw_roi,bw_GT] = fnc_load_CNN_images(FolderName,DownSample);
@@ -26,15 +27,14 @@ disp(['Step ' num2str(step) ': Skeleton extraction using threshold ' num2str(thr
 %% calculate the width 
 step = step+1;
 disp(['Step ' num2str(step) ': Calculating width'])
-switch width_method
-    case 'distance'
-        [im_width, ~] = bwdist(~bw_cnn,'Euclidean');
-    case 'granulometry'
-        [im_width] = fnc_granulometry(im);
-end
+[im_width, ~] = bwdist(~bw_cnn,'Euclidean');
 % extract the initial width along the skeleton
 W_pixels = zeros(size(im_width),'single');
 W_pixels(sk) = single(im_width(sk).*2);
+% % % %% calculate the intensity weighted width using granulometry
+% % % [im_granulometry] = fnc_granulometry(im, bw_cnn, bw_mask);
+% % % W_granulometry = zeros(size(im_granulometry),'single');
+% % % W_granulometry(sk) = single(im_granulometry(sk).*2);
 %% extract network using the thinned skeleton
 step = step+1;
 disp(['Step ' num2str(step) ': Extracting the network'])
@@ -51,7 +51,7 @@ disp(['Step ' num2str(step) ': Resolving duplicates'])
 %% construct the weighted graph
 step = step+1;
 disp(['Step ' num2str(step) ': Weighted graph'])
-[G_veins,edgelist] = fnc_weighted_graph(edgelist,W_pixels,skTree);
+[G_veins,edgelist] = fnc_weighted_graph(edgelist,W_pixels,skTree,DownSample);
 %% Refine the width
 step = step+1;
 disp(['Step ' num2str(step) ': Refining width'])
@@ -88,8 +88,8 @@ im_areoles_rgb = fnc_polygon_image(areole_stats, sk_polygon, total_area_mask);
 %% convert to an areole graph and a polygon graph
 step = step+1;
 disp(['Step ' num2str(step) ': Dual graph'])
-[G_polygons,polygon_LM2] = fnc_area_graph(G_veins,polygon_stats,polygon_LM,'polygons');
-[G_areoles,~] = fnc_area_graph(G_veins,areole_stats,polygon_LM,'areoles');
+[G_polygons,polygon_LM2] = fnc_area_graph(G_veins,polygon_stats,polygon_LM,'polygons',DownSample);
+[G_areoles,~] = fnc_area_graph(G_veins,areole_stats,polygon_LM,'areoles',DownSample);
 %% collect summary statistics into a results array
 step = step+1;
 disp(['Step ' num2str(step) ': Summary statistics'])
@@ -373,14 +373,29 @@ skLoop = skLoop & skFinal;
 skTree = skTree & skFinal;
 end
 
-function [width] = fnc_granulometry(im_cnn)
+function [width] = fnc_granulometry(im, bw_cnn, bw_mask)
+method = 'gradient';
+im = imcomplement(single(mat2gray(im)));
+% constrain the CLAHE image to the thresholded width
+%im(~bw_cnn) = 0;
+im(~bw_mask) = 0;
 s = 0:60;
-imo = zeros([size(im_cnn),length(s)], 'single');
-im = imtophat(imcomplement(im_cnn),strel('disk',61));
+imo = zeros([size(im),length(s)], 'single');
+im = imtophat(im,strel('disk',61));
 for i=1:length(s)
-    imo(:,:,i) = imopen(mat2gray(im),strel('disk',s(i)));
+    imo(:,:,i) = imopen(im,strel('disk',s(i)));
 end
-width = sum(imo,3);
+switch method
+    case 'integral'
+        % integral granulometry
+        width = sum(imo,3);
+    case 'gradient'
+        % max neg gradient
+        imgcd = diff(imo,1,3);
+        [imgcm,imgcmi] = min(movmean(imgcd,3,3),[],3);
+        imgcmi(imgcm==0)=0;
+        width = medfilt2(imgcmi,[5 5]);
+end
 end
 
 function [edgelist,edgeim] = fnc_resolve_self_loops(edgelist,edgeim)
@@ -514,7 +529,7 @@ while ~isempty(D_idx)
 end
 end
 
-function [G_veins,edgelist] = fnc_weighted_graph(edgelist,W_pixels,skTree)
+function [G_veins,edgelist] = fnc_weighted_graph(edgelist,W_pixels,skTree,DownSample)
 [nY,nX] = size(W_pixels);
 % calculate the node indices to account for the edges added and removed
 % I_idx is the linear index to the first pixel in each edge
@@ -549,18 +564,20 @@ EType = repmat({'EL'},nEdges,1);
 EType(skTree(M_pix)) = {'ET'};
 % set the edge weight to the average width
 E_weight = W_mean;
+% add in the downsample factor
+DS = repmat(DownSample,nEdges,1);
 % initially the nodes are empty
 nodei = zeros(nEdges,1);
 nodej = zeros(nEdges,1);
 node_idx = unique([I_idx'; J_idx']);
 % combine the edge metrics into an EdgeTable
-names = {'EndNodes', 'node_Idx', 'Name', 'Type', 'Weight', ...
+names = {'EndNodes', 'node_Idx', 'Name', 'Type','DownSample', 'Weight', ...
     'Width_initial',  ...
     'Length_initial', ...
     'Orientation_initial', ...
     'N_pix', 'M_pix'};
 
-EdgeTable = table([nodei, nodej], [I_idx', J_idx'], EName, EType, E_weight', ...
+EdgeTable = table([nodei, nodej], [I_idx', J_idx'], EName, EType, DS, E_weight', ...
     W_mean', ...
     L_sum', ...
     O_val', ...
@@ -572,10 +589,12 @@ node_ID = (1:length(node_idx))';
 node_type = repmat({'E'},length(node_idx),1);
 % get the coordinates of each node
 [y_pix,x_pix] = ind2sub([nY nX],node_idx);
+% add in the downsample factor
+DS = repmat(DownSample,length(node_idx),1);
 % Construct the full NodeTable (note at this point the co-ordinates are all
 % in pixels
-NodeTable = table(node_ID, node_idx, node_type, x_pix, y_pix, ...
-    'VariableNames',{'node_ID' 'node_Idx' 'node_Type' 'node_X_pix' 'node_Y_pix'});
+NodeTable = table(node_ID, node_idx, node_type, x_pix, y_pix, DS, ...
+    'VariableNames',{'node_ID' 'node_Idx' 'node_Type' 'node_X_pix' 'node_Y_pix' 'DownSample'});
 % Assemble the MatLab graph object
 % Convert the linear node index into a node ID
 [~,EdgeTable{:,'EndNodes'}(:,1)] = ismember(EdgeTable{:,'node_Idx'}(:,1), node_idx);
@@ -713,11 +732,16 @@ G_veins.Edges.Probability_cv = P_std'./P_mean';
 % Get the length as the difference in euclidean distance between pixels
 CL_val = cellfun(@(x) hypot(diff(x(:,1)),diff(x(:,2))),edgelist_center,'UniformOutput',0);
 CL_sum = cellfun(@sum, CL_val);
-% Get the width from the integral granulometry
+% Get the width from the distance transform
 CW_val = cellfun(@(x) W_pixels(x),P_idx,'UniformOutput',0);
 CW_mean = cellfun(@mean, CW_val);
 CW_std = cellfun(@std, CW_val);
 CW_cv = CW_std./CW_mean;
+% % % % Get the width from the integral granulometry
+% % % CWG_val = cellfun(@(x) W_granulometry(x),P_idx,'UniformOutput',0);
+% % % CWG_mean = cellfun(@mean, CWG_val);
+% % % CWG_std = cellfun(@std, CWG_val);
+% % % CWG_cv = CWG_std./CWG_mean;
 % get the average orientation of the center-width region. These
 % will tend to be in the range pi/2 to -pi/2 because nodei for all
 % edges is likely to be to the left of node j because of the
@@ -738,6 +762,8 @@ CO_ji = cellfun(@(m,j) atan2(-(m(1,1)-j(end,1)), m(1,2)-j(end,2)),mid,edgelist,'
 G_veins.Edges.Length = CL_sum';
 G_veins.Edges.Width = CW_mean';
 G_veins.Edges.Width_cv = CW_cv';
+% G_veins.Edges.Granulometry = CWG_mean';
+% G_veins.Edges.Granulometry_cv = CWG_cv';
 G_veins.Edges.Or_ij = rad2deg(CO_ij');
 G_veins.Edges.Or_ji = rad2deg(CO_ji');
 % calculate the tortuosity as the ratio of the distance between the end
@@ -1133,7 +1159,7 @@ Roughness = num2cell(([areole_stats.Perimeter].^2)./[areole_stats.Area]);
 [areole_stats(:).areole_ID] = deal(ID{:});
 end
 
-function [G_areas,LM] = fnc_area_graph(G_veins,area_stats,LM,type)
+function [G_areas,LM] = fnc_area_graph(G_veins,area_stats,LM,type,DownSample)
 % Construct a NodeTable with the node for each area, along with the
 % corresponding metrics
 % extract the centroid values
@@ -1145,11 +1171,12 @@ NodeTable = struct2table(stats);
 % add the centroid positions back in as separate columns in the table
 NodeTable.node_X_pix = polygon_Centroid(:,1);
 NodeTable.node_Y_pix = polygon_Centroid(:,2);
+NodeTable.DownSample = repmat(DownSample,height(NodeTable),1);
 % reorder the table to get the ID and co-ordinates first
-NodeTable = NodeTable(:,[end-2:end, 1:end-3]);
+NodeTable = NodeTable(:,[end-3:end, 1:end-4]);
 % Construct an EdgeTable with the width of the pixel skeleton edge that it
 % crosses
-names = {'EndNodes' 'Width' 'Name'};
+names = {'EndNodes' 'Width' 'Name' 'DownSample'};
 % If an area has a k=1 edge within it (i.e. a terminal vein) there could be
 % two possible edges to an adjacent area on either side with the same ID.
 % Therefore duplicate edges are resolved to the minimum. Reorder nodes to
@@ -1170,8 +1197,10 @@ edges(idx,:) = [];
 % remove edges connected to themselves
 idx = diff(edges(:,1:2),[],2)==0;
 edges(idx,:) = [];
+% downsample factor
+DS = repmat(DownSample,size(edges,1),1);
 % create the edgetable
-EdgeTable = table([edges(:,1) edges(:,2)],edges(:,3),edges(:,4), 'VariableNames', names);
+EdgeTable = table([edges(:,1) edges(:,2)],edges(:,3),edges(:,4),DS, 'VariableNames', names);
 G_areas = graph(EdgeTable,NodeTable,'OmitSelfLoops');
 % check the number of components and only keep the largest
 % [CC, binsizes] = conncomp(G_areas);

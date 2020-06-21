@@ -61,7 +61,7 @@ for iF = start:numel(FolderNames)
         % change the working directory
         cd(FolderNames{iF});
         % run the analysis
-        [results, PR_methods] = MDFLeafVeinAnalysis_PR_v2(FolderNames{iF},micron_per_pixel,DownSample,ShowFigs,ExportFigs);
+        [results, PR_methods] = MDFLeafVeinAnalysis_PR_v3(FolderNames{iF},micron_per_pixel,DownSample,ShowFigs,ExportFigs);
         % reset the working directory
         cd(dir_out_summary)
         % save the best results from each experiment to a single file

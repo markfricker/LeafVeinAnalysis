@@ -1,4 +1,4 @@
-%function [results, PR_methods] = MDFLeafVeinAnalysis_PR_v2(FolderName,micron_per_pixel,DownSample,ShowFigs,ExportFigs)
+function [results, PR_methods] = MDFLeafVeinAnalysis_PR_v2(FolderName,micron_per_pixel,DownSample,ShowFigs,ExportFigs)
 %% set up directories
 dir_out_PR_results = ['..' filesep 'summary' filesep 'PR' filesep 'results' filesep];
 dir_out_PR_images = ['..' filesep 'summary' filesep 'PR' filesep 'images' filesep];
@@ -228,7 +228,7 @@ sheets = setdiff(fieldnames(results),{'File';'TimeStamp';'MicronPerPixel';'DownS
 for iS = 1:numel(sheets)
     writetable(results.(sheets{iS}),[dir_out_PR_results [FolderName '_results.xlsx']],'FileType','Spreadsheet','Sheet',sheets{iS},'WriteVariableNames',true,'WriteRowNames',true)
 end
-%end
+end
 %% all functions
 function [im,im_cnn,bw_mask,bw_vein,bw_roi,bw_GT] = fnc_load_CNN_images(FolderName,DownSample)
 % get the contents of the directory
