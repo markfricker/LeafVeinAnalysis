@@ -1,7 +1,7 @@
 %% Initialise
 clc
 clear
-remote = 0;
+remote = 1;
 ShowFigs = 1;
 ExportFigs = 1;
 %% set up parameters

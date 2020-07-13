@@ -876,7 +876,7 @@ hfig.Color = 'w';
 % offset = 0;
 
 tiledlayout(6,6,'TileSpacing','none','Padding','none'); % only runs in
-% 2019b
+% 2019b onwards
 %
 idx = PR_methods.select;
 methods = {PR_methods.name{idx}};

@@ -6,28 +6,29 @@ dir_out_data = ['..' filesep 'summary' filesep 'data' filesep];
 dir_out_HLD = ['..' filesep 'summary' filesep 'HLD' filesep];
 %% set up parameters
 Calibration = MicronPerPixel.*DownSample;
-sk_width = 3;
+sk_width = 5;
 E_width = 1;
 %% set up default colour map
-cmap = jet(256);
+%cmap = jet(256);
+% use a perceptually uniform colormap from Peter Kovesi
+cmap = colorcet('R3');
 cmap(1,:) = 0;
 %% load in the image files
 step = 0;
 warning off
-% Load in the images and downsample them. Note all results in pixels are
-% for the downsampled images. The summary results are calibrated in microns
-% taking this into account.
+% Load in the images and downsample them. All results are calibrated in
+% microns taking this into account.
 step = step+1;
 disp(['Step ' num2str(step) ': Processing ' FolderName])
-[im,im_cnn,bw_mask,bw_vein,bw_roi,bw_GT] = fnc_load_CNN_images(FolderName,DownSample);
+[im,imCNN,bwMask,bwVein,bwROI,bwGT] = fnc_load_CNN_images(FolderName,DownSample);
 %% get the skeleton
 step = step+1;
 disp(['Step ' num2str(step) ': Skeleton extraction using threshold ' num2str(threshold)])
-[bw_cnn, sk, skLoop, skTree] = fnc_skeleton(im_cnn,bw_vein,bw_mask,threshold,Calibration);
+[bwCNN, sk, skLoop, skTree, skRing, skMask] = fnc_skeleton(imCNN,bwVein,bwMask,threshold);
 %% calculate the width
 step = step+1;
 disp(['Step ' num2str(step) ': Calculating width'])
-[im_width, ~] = bwdist(~bw_cnn,'Euclidean');
+[im_width, ~] = bwdist(~bwCNN,'Euclidean');
 % extract the initial width along the skeleton
 W_microns = zeros(size(im_width),'single');
 W_microns(sk) = single(im_width(sk).*2.*Calibration);
@@ -55,11 +56,11 @@ disp(['Step ' num2str(step) ': Weighted graph'])
 %% Refine the width
 step = step+1;
 disp(['Step ' num2str(step) ': Refining width'])
-[G_veins,edgelist_center] = fnc_refine_width(G_veins,edgelist,im,im_cnn,W_microns,Calibration);
+[G_veins,edgelist_center] = fnc_refine_width(G_veins,edgelist,im,imCNN,W_microns,Calibration);
 %% calculate a pixel skeleton for the center weighted edges
 step = step+1;
 disp(['Step ' num2str(step) ': Colour-coded skeleton'])
-[CW_microns,im_width,coded_CW,coded_FW] = fnc_coded_skeleton(im,sk,bw_mask,G_veins,edgelist,edgelist_center,sk_width,cmap);
+[CW_microns,im_width,coded_CW,coded_FW] = fnc_coded_skeleton(im,sk,skMask,G_veins,edgelist,edgelist_center,sk_width,cmap);
 %% display the weighted network
 step = step+1;
 disp(['Step ' num2str(step) ': Image display'])
@@ -80,10 +81,10 @@ end
 step = step+1;
 disp(['Step ' num2str(step) ': polygon analysis'])
 % find the polygon and areole areas
-[G_veins, sk_polygon, bw_polygons, bw_areoles, total_area_mask, polygon_LM] = fnc_polygon_find(G_veins,bw_cnn,sk,skLoop,bw_mask);
+[G_veins, sk_polygon, bw_polygons, bw_areoles, polygon_LM] = fnc_polygon_find(G_veins,bwCNN,sk,skLoop,skRing,skMask);
 [areole_stats,polygon_stats] = fnc_polygon_analysis(bw_polygons,bw_areoles, polygon_LM,FullMetrics,Calibration);
 % construct color-coded image based on log area for display
-im_areoles_rgb = fnc_polygon_image(areole_stats, sk_polygon, total_area_mask);
+im_areoles_rgb = fnc_polygon_image(areole_stats, sk_polygon, skMask);
 %im_polygons_rgb = fnc_polygon_image(polygon_stats, sk_polygon, total_area_mask);
 %% convert to an areole graph and a polygon graph
 step = step+1;
@@ -93,7 +94,8 @@ disp(['Step ' num2str(step) ': Areole and Polygon dual graph conversion'])
 %% collect summary statistics into a results array
 step = step+1;
 disp(['Step ' num2str(step) ': Summary statistics'])
-total_area = sum(bw_mask(:))*Calibration^2;
+%total_area = sum(bw_mask(:))*Calibration^2;
+total_area = sum(skMask(:))*Calibration^2;
 polygon_area = sum(G_polygons.Nodes.Area);
 veins = fnc_summary_veins(G_veins,total_area,polygon_area);
 areoles = fnc_summary_areoles(G_areoles,polygon_area,FullMetrics);
@@ -117,7 +119,7 @@ if ShowFigs == 1
     warning off images:initSize:adjustingMag
     warning off MATLAB:LargeImage
     skel = imerode(single(cat(3,1-skTree,1-skLoop,1-skTree)), ones(5));
-    images = {im,max(im_cnn(:))-im_cnn,skel,coded_FW,im_areoles_rgb,max(im_cnn(:))-im_cnn};
+    images = {im,max(imCNN(:))-imCNN,skel,coded_FW,im_areoles_rgb,max(imCNN(:))-imCNN};
     graphs = {'none','none','none','none','none','Width'};
     titles = {'original','CNN','Skeleton','width','areoles','dual graph'};
     display_figure(images,graphs,titles,G_polygons,E_width,[1:6],[dir_out_images FolderName '_Figure'],ExportFigs);
@@ -129,14 +131,14 @@ disp(['Step ' num2str(step) ': Hierarchical loop decomposition'])
 save([dir_out_HLD FolderName '_HLD_results.mat'],'G_HLD','parent')
 %% HLD display
 if ShowFigs == 1 && ExportFigs == 0
-    display_HLD_v1(G_polygons,im_cnn,G_HLD,FullLeaf,[dir_out_HLD FolderName '_HLD_1'],ExportFigs);
-    display_HLD_v2(G_polygons,im_cnn,G_HLD,FullLeaf,[dir_out_HLD FolderName '_HLD_2'],ExportFigs);
-    display_HLD_figure(G_polygons,im_cnn,G_HLD,FullLeaf,[dir_out_HLD FolderName '_HLD_3'],ExportFigs);
+    display_HLD_v1(G_polygons,imCNN,G_HLD,FullLeaf,[dir_out_HLD FolderName '_HLD_1'],ExportFigs);
+    display_HLD_v2(G_polygons,imCNN,G_HLD,FullLeaf,[dir_out_HLD FolderName '_HLD_2'],ExportFigs);
+    display_HLD_figure(G_polygons,imCNN,G_HLD,FullLeaf,[dir_out_HLD FolderName '_HLD_3'],ExportFigs);
 end
 if ExportFigs == 1
-    display_HLD_v1(G_polygons,im_cnn,G_HLD,FullLeaf,[dir_out_HLD FolderName '_HLD_1'],ExportFigs);
-    display_HLD_v2(G_polygons,im_cnn,G_HLD,FullLeaf,[dir_out_HLD FolderName '_HLD_2'],ExportFigs);
-    display_HLD_figure(G_polygons,im_cnn,G_HLD,FullLeaf,[dir_out_HLD FolderName '_HLD_3'],ExportFigs);
+    display_HLD_v1(G_polygons,imCNN,G_HLD,FullLeaf,[dir_out_HLD FolderName '_HLD_1'],ExportFigs);
+    display_HLD_v2(G_polygons,imCNN,G_HLD,FullLeaf,[dir_out_HLD FolderName '_HLD_2'],ExportFigs);
+    display_HLD_figure(G_polygons,imCNN,G_HLD,FullLeaf,[dir_out_HLD FolderName '_HLD_3'],ExportFigs);
 end
 %%
 % % % if ExportFigs == 1
@@ -214,40 +216,40 @@ GT_name = [FolderName '_seg.png'];
 if exist(img_name,'file') == 2
     im = imresize(imread(img_name),[nY,nX]);
 else
-    disp('no original image')
+    disp('        No original image')
     im = zeros(nY,nX, 'uint8');
 end
 % load in the mask images
 if exist(mask_name,'file') == 2
     bw_mask = imresize(logical(imread(mask_name)),[nY,nX]);
 else
-    disp('no mask image')
+    disp('        No mask image')
     bw_mask = true(nY,nX);
 end
 if exist(cnn_mask_name,'file') == 2
     bw_cnn_mask = imresize(logical(imread(cnn_mask_name)),[nY,nX]);
 else
-    disp('no cnn mask image')
+    disp('        No cnn mask image')
     bw_cnn_mask = true(nY,nX);
 end
 % load in the big vein image if present
 if exist(vein_name,'file') == 2
     bw_vein = imresize(logical(imread(vein_name)),[nY,nX]);
 else
-    disp('no manual vein image')
+    disp('        No manual vein image')
     bw_vein = false(nY,nX);
 end
 % load in the manual roi and ground truth images
 if exist(roi_name,'file') == 2
     bw_roi = imresize(logical(imread(roi_name)>0),[nY,nX]);
 else
-    disp('no roi image')
+    disp('        No roi image')
     bw_roi = true(nY,nX);
 end
 if exist(GT_name,'file') == 2
     bw_GT = imresize(logical(imread(GT_name)>0),[nY,nX]);
 else
-    disp('no GT image')
+    disp('        No GT image')
     bw_GT = false(nY,nX);
 end
 % apply the masks
@@ -255,83 +257,122 @@ bw_mask = bw_mask & bw_cnn_mask;
 im_cnn(~bw_mask) = 0;
 end
 
-function [bw_cnn, skFinal, skLoop, skTree] = fnc_skeleton(im_in,bw_vein,bw_mask,threshold,Calibration)
+function [bwCNN, skFinal, skLoop, skTree, skRing, skMask] = fnc_skeleton(im_in,bwVein,bwMask,threshold)
 %warning off
 if islogical(im_in)
     % the input image is already a binary image
-    bw_cnn = im_in;
+    bwCNN = im_in;
 else
     % impose local minima to smooth out background noise using a dip of 26.5%
     % approximating the raleigh criterion
     exmin = imextendedmin(mat2gray(im_in),0.265);
     im = imimposemin(mat2gray(im_in),exmin);
     % convert to a binary image
-    bw_cnn = imbinarize(im,threshold);
+    bwCNN = imbinarize(im,threshold);
     %bw_cnn = imbinarize(mat2gray(im_in),threshold);
 end
 % add in the big vein image if present
-if ~isempty(bw_vein)
-    bw_cnn = bw_cnn | bw_vein;
+if ~isempty(bwVein)
+    bwCNN = bwCNN | bwVein;
 end
 % smooth the binary image
-bw_cnn = medfilt2(bw_cnn,[3 3]);
-% fill in any small holes - suggest ~10x10 um = 100 um2,
+%bw_cnn = medfilt2(bw_cnn,[3 3]);
+% fill in any small holes - suggest ~5x5 um = 25 um2,
 % 100/(Calibration^2) in pixels after downsampling
-im_holes = bwareafilt(imcomplement(bw_cnn),[0 round(100/Calibration^2)]);
-% keep the connected component
-bw_cnn = bwareafilt(bw_cnn | im_holes,1);
-if ~isempty(bw_mask)
-    bw_cnn = bw_cnn | ~bw_mask;
+% % % imHoles = bwareafilt(imcomplement(bwCNN),[0 round(25/Calibration^2)]);
+% % % disp(['         Check for small holes: ' num2str(any(any(imHoles)))])
+% % % bwCNN = bwCNN | imHoles;
+if ~isempty(bwMask)
+    %bwCNN = bwCNN | ~bwMask 
+    bwCNN = bwCNN & bwMask;
 else
-    bw_mask = true(size(bw_cnn));
+    bwMask = true(size(bwCNN));
 end
-% pad the array to ensure veins touching the edge segmented to the midline
-bw_cnn = padarray(bw_cnn,[1 1],1,'both');
+% keep the connected component
+bwCNN = bwareafilt(bwCNN,1);
+% pad the array to ensure veins touching the edge form part of a dummy loop so that they are segmented to the midline
+%bwCNN = padarray(bwCNN,[1 1],1,'both');
 % calculate the distance transform as the input to a watershed segmentation
-D = bwdist(~bw_cnn,'Euclidean');
+D = bwdist(~bwCNN,'Euclidean');
 %W = watershed(D,4);
+% use 8 connectivity to avoid slicing off single border pixels on a
+% diagonal. Note this gives a thicker watershed, but is thinned back to a
+% single pixel skeleton.
 W = watershed(D,8);
 % get the watershed skeleton comprising only loops
-skLoop = W == 0;
+skLoopInitial = W == 0;
+% fill in any single pixel holes
+skLoopInitial = bwmorph(skLoopInitial,'fill');
 % thin to a single pixel skeleton
-skLoop = bwmorph(skLoop,'thin',Inf);
-% find any isolated loops
+skLoopInitial = bwmorph(skLoopInitial,'thin',Inf);
+% skLoop = bwmorph(skLoop,'spur',inf); way too slow!
+% % % % remove regions outside the mask and the border
+% % % skLoop = skLoopInitial & padarray(bwMask,[1 1],0,'both');
+skLoop = skLoopInitial;
+% prune any external truncated loops using the dilated region inside the loopy skeleton as
+% a mask
+skMask = imdilate(imfill(skLoop,'holes') & ~skLoop, [0 1 0; 1 1 1; 0 1 0]);
+% find any internal damaged regions that need to be excluded
+[r,c] = find(imclearborder(~bwMask));
+DamageMask = bwselect(~skLoop,c,r,4);
+% keep the largest component as a modified mask
+%skLoopMask = bwareafilt(skLoopMask & padarray(bwMask,[1 1],0,'both'),1);
+skMask = bwareafilt(skMask & ~DamageMask,1);
+% prune the loop skeleton to match
+skLoop = skLoop & skMask;
+% find any isolated loops not connected to the GCC within the skLoopMask
+% area
 skRing = skLoop & ~bwareafilt(skLoop,1);
-% exclude rings toughing the border
+% exclude rings touching the border as these are incomplete
 skRing = imclearborder(skRing);
 if any(skRing(:))
     % fill the loops
     skLoopFill = imfill(skRing,'holes');
-    % punch te loop skeleton back out. This ensure two touching loops are
+    % punch the loop skeleton back out. This ensure two touching loops are
     % treated separately
     skLoopFill = skLoopFill & ~skRing;
     % erode to a single point in the middle of the loop
     skLoopPoints = bwulterode(skLoopFill);
     % use these points to fill the loop in the binary image
-    bw_cnn_fill = imfill(bw_cnn,find(skLoopPoints));
-    % thin the binary image to a single pixel skeleton
-    sk = bwmorph(bw_cnn_fill,'thin',Inf);
+    bwCNNFill = imfill(bwCNN,find(skLoopPoints));
+    % thin the binary image to a single pixel skeleton to ensure that there
+    % is a connected skeleton within the isolated loops. Later on this will
+    % be relaced by the loop skeleton but is needed to maintain
+    % connecectivity of the trees
+    sk = bwmorph(bwCNNFill,'thin',Inf);
 else
-    sk =  bwmorph(bw_cnn,'thin',Inf);
+    sk =  bwmorph(bwCNN,'thin',Inf);
 end
-% only keep the largest connected component
-sk = bwareafilt(sk,1);
-% find tree regions in the thinned skeleton as the difference after spur
-% removal
-skSp = bwmorph(sk,'spur',Inf);
-skTree = xor(sk,skSp);
-% remove single pixel spurs now present as isolated points
-skTree = bwmorph(skTree,'clean');
+% % only keep the connected component within the loop mask
+% sk = sk & skLoopMask;
+% sk = bwareafilt(sk,1);
+% get the loops from the thinned skeleton using the watershed with 4
+% connectivity
+W1 = watershed(sk,4);
+skLoop2 = W1 == 0;
+skLoop2 = bwmorph(skLoop2,'thin',Inf);
+% find tree regions in the thinned skeleton as the regions not part of a loop
+skTree = xor(sk,skLoop2);
+% also punch out the original loop skeleton. This may disconnect short segments
+% from the base of the tree skeleton. The main trunk will be re-connected
+% later.
+skTree(skLoop) = 0;
+% make sure trees connected to isolated loops are retained
 if any(skRing(:))
-    % punch out the isolated loops
+    % punch out the skeleton within the area of the isolated rings
     skTree = skTree & ~skLoopFill;
-    % add back in the watershed loop
+    % add back in the rings
     skTree = skTree | skRing;
 end
 % get the endpoints of the thinned skeleton, representing the free end
 % veins
 epsk = bwmorph(sk,'endpoints');
-% find the endpoints at the root of the tree
+% mask out endpoints and skeleton outside the loopy region and mask
+epsk = epsk & skMask;
+% only keep branches that originate from an endpoint
+[r,c] = find(epsk);
+skTree = bwselect(skTree,c,r);
+% now find the endpoints at the root of the tree
 epskTree = bwmorph(skTree,'endpoints');
 epskTree = xor(epsk,epskTree);
 % only work with endpoints that are not already connected to
@@ -339,8 +380,8 @@ epskTree = xor(epsk,epskTree);
 connected = bwareafilt(epskTree | skLoop,1);
 epskTree = epskTree & ~connected;
 % get the feature map from the watershed skeleton to find the nearest pixel
-% to connect to
-[~,skW_idx] = bwdist(skLoop);
+% to connect to in the original full loop skeleton
+[~,skW_idx] = bwdist(skLoopInitial);
 % get the pixel co-ordinates for the nearest point on the skeleton
 [y1,x1] = ind2sub(size(skRing),skW_idx(epskTree));
 % get the pixel co-ordinates for the endpoints
@@ -351,6 +392,8 @@ epskTree = epskTree & ~connected;
 P = cellfun(@(x,y) sub2ind(size(skLoop),y,x),x,y,'UniformOutput',0);
 % add the lines into the tree skeleton
 skTree(cat(1,P{:})) = 1;
+% % remove any tree components outside the mask
+% skTree = skTree & padarray(bwMask,[1 1],0,'both');
 if any(skRing(:))
     % remove any parts of the skeleton overlapping the loops
     skTree(skLoopFill) = 0;
@@ -358,21 +401,24 @@ if any(skRing(:))
     % the tree skeleton
     skLoop(skRing) = 0;
 end
-% add the watershed skeleton back in
+% add the watershed loop skeleton back in
 skFinal = skTree | skLoop;
-% remove the padding
-skFinal = skFinal(2:end-1,2:end-1);
-skLoop = skLoop(2:end-1,2:end-1);
-skTree = skTree(2:end-1,2:end-1);
-bw_cnn = bw_cnn(2:end-1,2:end-1);
+% % remove the padding
+% skFinal = skFinal(2:end-1,2:end-1);
+% skLoop = skLoop(2:end-1,2:end-1);
+% skTree = skTree(2:end-1,2:end-1);
+% bwCNN = bwCNN(2:end-1,2:end-1);
 % remove edges touching the mask
 bp = bwmorph(skFinal,'branchpoints');
 sk = skFinal;
 sk(imdilate(bp,ones(3))) = 0;
-B = bwperim(true(size(bw_mask)));
-[r,c] = find(~bw_mask | B);
-touching = bwselect(sk|~bw_mask,c,r);
+B = bwperim(true(size(bwMask)));
+[r,c] = find(~bwMask | B);
+touching = bwselect(sk|~bwMask,c,r);
 skFinal(touching) = 0;
+% make sure pixels are allocated correctly
+overlaps = skLoop & skTree;
+skTree(overlaps) = 0;
 % keep the largest connected component
 skFinal = bwareafilt(skFinal,1);
 skLoop = skLoop & skFinal;
@@ -761,7 +807,7 @@ G_veins.Edges.Or_ij = rad2deg(CO_ij');
 G_veins.Edges.Or_ji = rad2deg(CO_ji');
 % calculate the tortuosity as the ratio of the distance between the end
 % points (chord length) and the total length
-CL_chord = cellfun(@(x) hypot(x(1,1)-x(end,1),x(1,2)-x(end,2)),edgelist_center);
+CL_chord = cellfun(@(x) MicronPerPixel.*hypot(x(1,1)-x(end,1),x(1,2)-x(end,2)),edgelist_center);
 G_veins.Edges.Tortuosity = CL_sum'./CL_chord';
 G_veins.Edges.Tortuosity(isinf(G_veins.Edges.Tortuosity)) = 1;
 % calculate the center-weighted radius
@@ -947,34 +993,36 @@ coded_FW = imadd(im_rgb,sk_rgb);
 coded_FW = imoverlay(coded_FW,bwperim(bw_mask),'m');
 end
 
-function [G_veins, sk_polygon, bw_polygons, bw_areoles, total_area_mask, polygon_LM] = fnc_polygon_find(G_veins,bw_cnn,sk,skLoop,bw_mask)
-% remove any partial areas that are not fully bounded and therefore contact
-% the edge
-area = imclearborder(~sk & bw_mask,4);
-% remove any partial areoles that are touching any masked regions
-[r,c] = find(~bw_mask);
-area_mask = ~(bwselect(area | ~bw_mask,c,r,4));
-% get rid of any vestigial skeleton lines within the mask
-area_mask = bwmorph(area_mask, 'open');
-% fill the skeleton lines on the total area
-total_area_mask = imdilate(area, ones(3)) & area_mask;
-% remove isolated polygons
-total_area_mask = bwareafilt(total_area_mask, 1,'largest');
+function [G_veins, sk_polygon, bw_polygons, bw_areoles, polygon_LM] = fnc_polygon_find(G_veins,bw_cnn,sk,skLoop,skRing,skMask)
+% % remove any partial areas that are not fully bounded and therefore contact
+% % the edge
+% area = imclearborder(~sk & skMask,4);
+% % remove any partial areoles that are touching any masked regions
+% [r,c] = find(~skMask);
+% area_mask = ~(bwselect(area | ~skMask,c,r,4));
+% % get rid of any vestigial skeleton lines within the mask
+% area_mask = bwmorph(area_mask, 'open');
+% % fill the skeleton lines on the total area
+% total_area_mask = imdilate(area, [0 1 0; 1 1 1; 0 1 0]) & area_mask;
+% % make sure the full boundary is present
+% total_area_mask = total_area_mask | skLoop;
+% % remove isolated polygons
+% total_area_mask = bwareafilt(total_area_mask, 1,'largest');
 % The polygons include the areoles and the vein itself.
-bw_polygons = ~skLoop & total_area_mask;
-% find areas that are too small (note bwareafilt does not work as it is not
-% possible to set connectivity to 4)
-CC = bwconncomp(bw_polygons,4);
-stats = regionprops(CC, 'Area');
-% arbitary threshold of ~10x10 pixels
-idx = find([stats.Area] > 9);
-bw_polygons  = ismember(labelmatrix(CC), idx);
+bw_polygons = ~(skLoop | skRing) & skMask;
+% % % % find areas that are too small (note bwareafilt does not work as it is not
+% % % % possible to set connectivity to 4)
+% % % CC = bwconncomp(bw_polygons,4);
+% % % stats = regionprops(CC, 'Area');
+% % % % arbitary threshold of ~3x3 pixels
+% % % idx = find([stats.Area] > 9);
+% % % bw_polygons  = ismember(labelmatrix(CC), idx);
 % The areoles exclude the full width of the veins
-bw_areoles = ~bw_cnn & total_area_mask & bw_polygons;
+bw_areoles = ~bw_cnn & skMask & bw_polygons;
 % remove any orphan pixels
 %bw_areoles = bwmorph(bw_areoles,'clean');
 % trim the skeleton to match
-sk_polygon = sk & total_area_mask;
+sk_polygon = sk & skMask;
 % construct a label matrix of areas including the veins
 LM = bwlabel(bw_polygons,4);
 % remove the skeleton in the calculation of the neighbouring
@@ -987,17 +1035,19 @@ Neighbour2 = colfilt(LM,[3 3],'sliding',@(x) min(x,[],'Omitnan'));
 % add the neighbours to the graph
 G_veins.Edges.Ai = Neighbour1(G_veins.Edges.M_idx);
 G_veins.Edges.Aj = Neighbour2(G_veins.Edges.M_idx);
-% replace the skeleton pixels with zero
+% replace the skeleton pixels with zero again
 LM(sk_polygon) = 0;
 % dilate the label matrix to include the pixel skeleton
 %polygon_LM = imdilate(LM,ones(3));
 polygon_LM = imdilate(LM,[0 1 0; 1 1 1; 0 1 0]);
 % trim off any extension beyond the boundary
-polygon_LM = polygon_LM.*total_area_mask;
+polygon_LM = polygon_LM.*skMask;
+% fill in any remaining pixels
+polygon_LM = imfill(polygon_LM);
 end
 
-function im_polygons_rgb = fnc_polygon_image(polygon_stats, sk_polygon, total_area_mask)
-[nY,nX] = size(total_area_mask);
+function im_polygons_rgb = fnc_polygon_image(polygon_stats, sk_polygon, skMask)
+[nY,nX] = size(skMask);
 % construct a colour-coded area image from the log area
 idx = cat(1,polygon_stats.PixelIdxList{:});
 polygon_areas = cellfun(@(x) length(x),polygon_stats.PixelIdxList,'UniformOutput',1);
@@ -1005,7 +1055,7 @@ polygon_areas = cellfun(@(x) length(x),polygon_stats.PixelIdxList,'UniformOutput
 logA = log10(polygon_areas);
 logA(isinf(logA)) = nan;
 Amin = 1;
-Amax = log10(sum(total_area_mask(:)));
+Amax = log10(sum(skMask(:)));
 % normalise the range between 2 and 256 as an index into the
 % colourmap
 A_idx = ceil(254.*((logA-Amin)./(Amax-Amin)))+1;
@@ -1055,21 +1105,26 @@ else
         'Perimeter', ...
         'Solidity', ...
         'PixelIdxList');
+        % calibrate the additional fields
+    P_stats.ConvexArea = P_stats.ConvexArea.*MicronPerPixel^2;
     % get the maximum distance to the skeleton for each area
     D_stats = regionprops('Table',polygon_LM,bwdist(~bw_polygons)+0.5,'MaxIntensity','MeanIntensity');
-    % check whether format has switched to cell rather than number because
-    % values are not set)
-%     if iscell(D_stats.MeanIntensity)
-%     test4empty = cellfun(@isempty,D_stats.MeanIntensity);
-%     if any(test4empty)
-%         % replace the empty ell with the minimum distance of 0.5 pixel
-%         D_stats.MeanIntensity(test4empty) = deal(0.5);
-%         D_stats.MeanIntensity = cell2mat(D_stats.MeanIntensity);
-%     end
-%     
+%     % check whether format has switched to cell rather than number because
+%     % values are not set)
+%     D_stats.MeanIntensity(isnan(D_stats.MeanIntensity)) = 0.5;
+%     if iscell(D_stats.MaxIntensity)
+%         test4empty = cellfun(@isempty,D_stats.MaxIntensity);
+%         if any(test4empty)
+%             % replace the empty cell with the minimum distance of 0.5 pixel
+%             [D_stats.MaxIntensity(test4empty)] = {[0.5]};
+%             D_stats.MaxDistance = cell2mat(D_stats.MaxIntensity);
+%         end
 %     end
     % rename the fields
     D_stats.Properties.VariableNames([1 2]) = {'MaxDistance','MeanDistance'};
+    % calibrate the distances
+    D_stats.MaxDistance = D_stats.MaxDistance.*MicronPerPixel;
+    D_stats.MeanDistance = D_stats.MeanDistance.*MicronPerPixel;
     % 2020a onwards D_stats = renamevars(D_stats,["MaxIntensity","MeanIntensity"],["MaxDistance","MeanDistance"]);
     polygon_stats = [P_stats D_stats];
 end
@@ -1135,6 +1190,8 @@ else
     % rename the fields and calibrate
     % 2020a D_stats = renamevars(D_stats,["MaxIntensity","MeanIntensity"],["MaxDistance","MeanDistance"]);
     D_stats.Properties.VariableNames([1 2]) = {'MaxDistance','MeanDistance'};
+    D_stats.MaxDistance = D_stats.MaxDistance.*MicronPerPixel;
+    D_stats.MeanDistance = D_stats.MeanDistance.*MicronPerPixel;
     areole_stats = [A_stats D_stats];
 end
 % calibrate the remaining fields
@@ -1372,8 +1429,6 @@ PCC.PixelIdxList = {};
 % The set of polygons touching the boundary can then be used to set a
 % boundary flag in the G_polygons graph.
 boundary = polygon_LM==0;
-%boundary = bwmorph(boundary,'clean');
-%boundary = bwareafilt(boundary,[200 inf]);
 boundary = imdilate(boundary,ones(3));
 [r,c] = find(boundary);
 B_polygons = bwselect(bw_polygons,c,r,4);

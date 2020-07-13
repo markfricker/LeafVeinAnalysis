@@ -9,7 +9,7 @@ FullMetrics = 1;
 FullLeaf = 0;
 %% set up parameters
 MicronPerPixel = 1.6807;
-DownSample = 1;
+DownSample = 2;
 %% set up starting directory on the remote server
 if remote == 1
     addpath('/soge-home/projects/leaf-gpu/Matlab working')
