@@ -46,6 +46,7 @@ disp(['Step ' num2str(step) ': Processing ' FolderName])
 step = step+1;
 disp(['Step ' num2str(step) ': Precision-Recall analysis'])
 % subsample images to match the area used for the ground truth
+
 stats = regionprops(bw_roi,'BoundingBox');
 BB = round(stats.BoundingBox);
 PR_methods.roi.bw = bw_roi(BB(2):BB(2)+BB(4)-1,BB(1):BB(1)+BB(3)-1);
@@ -90,7 +91,7 @@ results.File = FolderName;
 results.TimeStamp = datetime('now','TimeZone','local','Format','d-MMM-y HH:mm:ss Z');
 results.MicronPerPixel = MicronPerPixel;
 results.DownSample = DownSample;
-resulta.Calibration = Calibration;
+results.Calibration = Calibration;
 %% set up blank results tables
 results.F1 = array2table(nan(11,13));
 results.F1.Properties.RowNames = [{'GT'};PR_methods.name];
@@ -225,7 +226,7 @@ results.FBeta2_ratio.Method = results.FBeta2_ratio.Properties.RowNames;
 results.FBeta2_ratio = results.FBeta2_ratio(:,[end-1:end, 1:end-2]);
 %% save the results
 save([dir_out_PR_results [FolderName '_results']],'results','PR_methods')
-sheets = setdiff(fieldnames(results),{'File';'TimeStamp';'MicronPerPixel';'DownSample'});
+sheets = setdiff(fieldnames(results),{'File';'TimeStamp';'MicronPerPixel';'DownSample';'Calibration'});
 for iS = 1:numel(sheets)
     writetable(results.(sheets{iS}),[dir_out_PR_results [FolderName '_results.xlsx']],'FileType','Spreadsheet','Sheet',sheets{iS},'WriteVariableNames',true,'WriteRowNames',true)
 end
@@ -275,33 +276,34 @@ else
 end
 % load in the mask images
 if exist(mask_name,'file') == 2
-    bw_mask = imresize(logical(imread(mask_name)),[nY,nX]);
+    bw_mask = imresize(max(logical(imread(mask_name)),[],3),[nY,nX]);
 else
     disp('no mask image')
     bw_mask = true(nY,nX);
 end
 if exist(cnn_mask_name,'file') == 2
-    bw_cnn_mask = imresize(logical(imread(cnn_mask_name)),[nY,nX]);
+    bw_cnn_mask = imresize(max(logical(imread(cnn_mask_name)),[],3),[nY,nX]);
 else
     disp('no cnn mask image')
     bw_cnn_mask = true(nY,nX);
 end
 % load in the big vein image if present
 if exist(vein_name,'file') == 2
-    bw_vein = imresize(logical(imread(vein_name)),[nY,nX]);
+    bw_vein = imresize(max(logical(imread(vein_name)),[],3),[nY,nX]);
 else
     disp('no manual vein image')
     bw_vein = false(nY,nX);
 end
 % load in the manual roi and ground truth images
 if exist(roi_name,'file') == 2
-    bw_roi = imresize(logical(imread(roi_name)>0),[nY,nX]);
+    bw_roi = imresize(max(logical(imread(roi_name)>0),[],3),[nY,nX]);
+    bw_roi = bwareafilt(bw_roi,1,'largest');
 else
     disp('no roi image')
     bw_roi = true(nY,nX);
 end
 if exist(GT_name,'file') == 2
-    bw_GT = imresize(logical(imread(GT_name)>0),[nY,nX]);
+    bw_GT = imresize(max(logical(imread(GT_name)>0),[],3),[nY,nX]);
 else
     disp('no GT image')
     bw_GT = false(nY,nX);

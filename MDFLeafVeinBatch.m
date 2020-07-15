@@ -2,9 +2,9 @@
 clc
 clear
 opengl software % to mimic the remote environment
-remote = 1;
+remote = 0;
 ShowFigs = 1;
-ExportFigs = 1;
+ExportFigs = 0;
 FullMetrics = 1;
 FullLeaf = 0;
 %% set up parameters
@@ -19,7 +19,7 @@ if remote == 1
 else
     dir_in = pwd;
 end
-%% Set-up working directories and write permisions
+%% Set-up working directories and write permissions
 cd(dir_in)
 if ~exist('summary','dir')
     mkdir('summary')

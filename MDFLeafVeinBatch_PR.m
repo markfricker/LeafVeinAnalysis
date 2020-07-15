@@ -5,7 +5,7 @@ remote = 1;
 ShowFigs = 1;
 ExportFigs = 1;
 %% set up parameters
-micron_per_pixel = 1.6807;
+MicronPerPixel = 1.6807;
 DownSample = 2;
 %% set up starting directory on the remote server
 if remote == 1
@@ -61,7 +61,7 @@ for iF = start:numel(FolderNames)
         % change the working directory
         cd(FolderNames{iF});
         % run the analysis
-        [results, PR_methods] = MDFLeafVeinAnalysis_PR_v3(FolderNames{iF},micron_per_pixel,DownSample,ShowFigs,ExportFigs);
+        [results, PR_methods] = MDFLeafVeinAnalysis_PR_v3(FolderNames{iF},MicronPerPixel,DownSample,ShowFigs,ExportFigs);
         % reset the working directory
         cd(dir_out_summary)
         % save the best results from each experiment to a single file

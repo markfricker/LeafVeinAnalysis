@@ -221,33 +221,33 @@ else
 end
 % load in the mask images
 if exist(mask_name,'file') == 2
-    bw_mask = imresize(logical(imread(mask_name)),[nY,nX]);
+    bw_mask = imresize(max(logical(imread(mask_name)),[],3),[nY,nX]);
 else
     disp('        No mask image')
     bw_mask = true(nY,nX);
 end
 if exist(cnn_mask_name,'file') == 2
-    bw_cnn_mask = imresize(logical(imread(cnn_mask_name)),[nY,nX]);
+    bw_cnn_mask = imresize(max(logical(imread(cnn_mask_name)),[],3),[nY,nX]);
 else
     disp('        No cnn mask image')
     bw_cnn_mask = true(nY,nX);
 end
 % load in the big vein image if present
 if exist(vein_name,'file') == 2
-    bw_vein = imresize(logical(imread(vein_name)),[nY,nX]);
+    bw_vein = imresize(max(logical(imread(vein_name)),[],3),[nY,nX]);
 else
     disp('        No manual vein image')
     bw_vein = false(nY,nX);
 end
 % load in the manual roi and ground truth images
 if exist(roi_name,'file') == 2
-    bw_roi = imresize(logical(imread(roi_name)>0),[nY,nX]);
+    bw_roi = imresize(max(logical(imread(roi_name)>0),[],3),[nY,nX]);
 else
     disp('        No roi image')
     bw_roi = true(nY,nX);
 end
 if exist(GT_name,'file') == 2
-    bw_GT = imresize(logical(imread(GT_name)>0),[nY,nX]);
+    bw_GT = imresize(max(logical(imread(GT_name)>0),[],3),[nY,nX]);
 else
     disp('        No GT image')
     bw_GT = false(nY,nX);
@@ -301,10 +301,10 @@ D = bwdist(~bwCNN,'Euclidean');
 W = watershed(D,8);
 % get the watershed skeleton comprising only loops
 skLoopInitial = W == 0;
-% fill in any single pixel holes
-skLoopInitial = bwmorph(skLoopInitial,'fill');
+% fill in any small holes
+holes = bwareafilt(~skLoopInitial,[0 5],4);
 % thin to a single pixel skeleton
-skLoopInitial = bwmorph(skLoopInitial,'thin',Inf);
+skLoopInitial = bwmorph(skLoopInitial | holes,'thin',Inf);
 % skLoop = bwmorph(skLoop,'spur',inf); way too slow!
 % % % % remove regions outside the mask and the border
 % % % skLoop = skLoopInitial & padarray(bwMask,[1 1],0,'both');
@@ -312,14 +312,19 @@ skLoop = skLoopInitial;
 % prune any external truncated loops using the dilated region inside the loopy skeleton as
 % a mask
 skMask = imdilate(imfill(skLoop,'holes') & ~skLoop, [0 1 0; 1 1 1; 0 1 0]);
-% find any internal damaged regions that need to be excluded
+% find any internal damaged polygons that need to be excluded
 [r,c] = find(imclearborder(~bwMask));
 DamageMask = bwselect(~skLoop,c,r,4);
+%DamageMask = imfill(DamageMask,'holes');
 % keep the largest component as a modified mask
-%skLoopMask = bwareafilt(skLoopMask & padarray(bwMask,[1 1],0,'both'),1);
 skMask = bwareafilt(skMask & ~DamageMask,1);
+% remove leftover skeleton lines
+skMask = imopen(skMask,[0 1 0; 1 1 1; 0 1 0]);
+% fill holes at 4-way junctions
+skMask = bwmorph(skMask,'fill');
 % prune the loop skeleton to match
 skLoop = skLoop & skMask;
+skLoop = bwmorph(skLoop,'thin',Inf);
 % find any isolated loops not connected to the GCC within the skLoopMask
 % area
 skRing = skLoop & ~bwareafilt(skLoop,1);
@@ -1181,7 +1186,7 @@ else
 %     if iscell(D_stats.MeanIntensity)
 %     test4empty = cellfun(@isempty,D_stats.MeanIntensity);
 %     if any(test4empty)
-%         % replace the empty ell with the minimum distance of 0.5 pixel
+%         % replace the empty cell with the minimum distance of 0.5 pixel
 %         D_stats.MeanIntensity(test4empty) = deal(0.5);
 %         D_stats.MeanIntensity = cell2mat(D_stats.MeanIntensity);
 %     end
@@ -1797,8 +1802,9 @@ if FullLeaf == 1
 else
     % extract the subgraph for nodes that are not linked to a boundary node
     g1 = subgraph(G_HLD,find(~G_HLD.Nodes.Boundary));
-    % extract the largest five fully connected subgraphs
-    last = 5;
+    % extract the largest five fully connected subgraphs (or less if not present)
+    bins = conncomp(g1);
+    last = min(5,max(bins));
 end
 % order by the largest connected subtree
 cc = conncomp(g1,'OutputForm','cell');
@@ -2050,8 +2056,9 @@ if FullLeaf == 1
 else
     % extract the subgraph for nodes that are not linked to a boundary node
     g1 = subgraph(G_HLD,find(~G_HLD.Nodes.Boundary));
-    % extract the largest five fully connected subgraphs
-    last = 5;
+    % extract the largest five fully connected subgraphs (or less if not present)
+    bins = conncomp(g1);
+    last = min(5,max(bins));
 end
 % order by the largest connected subtree
 cc = conncomp(g1,'OutputForm','cell');
