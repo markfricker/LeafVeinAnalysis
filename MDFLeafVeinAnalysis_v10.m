@@ -6,12 +6,12 @@ dir_out_data = ['..' filesep 'summary' filesep 'data' filesep];
 dir_out_HLD = ['..' filesep 'summary' filesep 'HLD' filesep];
 %% set up parameters
 Calibration = MicronPerPixel.*DownSample;
-sk_width = 5;
-E_width = 1;
+sk_width = floor(15/DownSample);
+E_width = 1.5;
 %% set up default colour map
 %cmap = jet(256);
 % use a perceptually uniform colormap from Peter Kovesi
-cmap = colorcet('R3');
+cmap = colorcet('R2');
 cmap(1,:) = 0;
 %% load in the image files
 step = 0;
@@ -118,7 +118,7 @@ save([dir_out_data FolderName '_Graphs.mat'],'G_veins','G_areoles','G_polygons',
 if ShowFigs == 1
     warning off images:initSize:adjustingMag
     warning off MATLAB:LargeImage
-    skel = imerode(single(cat(3,1-skTree,1-skLoop,1-skTree)), ones(5));
+    skel = imerode(single(cat(3,1-skTree,1-skLoop,1-skTree)), ones(sk_width));
     images = {im,max(imCNN(:))-imCNN,skel,coded_FW,im_areoles_rgb,max(imCNN(:))-imCNN};
     graphs = {'none','none','none','none','none','Width'};
     titles = {'original','CNN','Skeleton','width','areoles','dual graph'};
@@ -170,12 +170,6 @@ writetable(G_polygons.Edges,[dir_out_data FolderName '_results.xlsx'],'FileType'
 writetable(G_polygons.Nodes,[dir_out_data FolderName '_results.xlsx'],'FileType','spreadsheet','WriteVariableNames',1,'Sheet','Polygon Nodes')
 writetable(G_HLD.Edges,[dir_out_data FolderName '_results.xlsx'],'FileType','spreadsheet','WriteVariableNames',1,'Sheet','HLD Edges')
 writetable(G_HLD.Nodes,[dir_out_data FolderName '_results.xlsx'],'FileType','spreadsheet','WriteVariableNames',1,'Sheet','HLD Nodes')
-% remove the unnecessary default sheets. Note this requires the full path.
-% dir_current = pwd;
-% cd(dir_out_data);
-% dir_in = pwd;
-% %xls_delete_sheets([dir_in filesep FolderName '_results.xlsx'],{'Sheet1','Sheet2','Sheet3'})
-% cd(dir_current);
 end
 
 function [im,im_cnn,bw_mask,bw_vein,bw_roi,bw_GT] = fnc_load_CNN_images(FolderName,DownSample)
@@ -1049,6 +1043,7 @@ polygon_LM = imdilate(LM,[0 1 0; 1 1 1; 0 1 0]);
 polygon_LM = polygon_LM.*skMask;
 % fill in any remaining pixels
 polygon_LM = imfill(polygon_LM);
+polygon_LM = polygon_LM.*skMask;
 end
 
 function im_polygons_rgb = fnc_polygon_image(polygon_stats, sk_polygon, skMask)
@@ -1726,7 +1721,7 @@ for ia = 1:6
         E_idx(isnan(E_idx)) = 1;
         % the index should be real numbers normalised between 1 and 256 at
         % this point.
-        cmap = jet(256);
+        cmap = colorcet('R2');
         cmap(1,:) = 0;
         E_color =  cmap(E_idx,:);
         % plot the graph
@@ -1739,7 +1734,7 @@ for ia = 1:6
         hold on
         plot(G, 'XData',G.Nodes.node_X_pix,'YData',G.Nodes.node_Y_pix, ...
             'NodeColor','g','MarkerSize',1,'Marker', 'none', 'NodeLabel', [], ...
-            'EdgeColor',E_color,'EdgeAlpha',1,'EdgeLabel', [],'LineWidth',1);
+            'EdgeColor',E_color,'EdgeAlpha',1,'EdgeLabel', [],'LineWidth',2);
     end
 end
 drawnow
